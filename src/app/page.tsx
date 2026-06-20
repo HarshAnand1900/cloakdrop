@@ -1,102 +1,184 @@
-import Image from "next/image";
+"use client";
+
+import Link from "next/link";
+import { Logo } from "@/components/Logo";
+
+function Feature({
+  icon,
+  title,
+  body,
+}: {
+  icon: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="cd-card" style={{ padding: "1.1rem 1.2rem" }}>
+      <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
+      <h3 style={{ margin: "0 0 6px", fontSize: 15.5 }}>{title}</h3>
+      <p style={{ margin: 0, color: "var(--fg-muted)", fontSize: 13.5, lineHeight: 1.55 }}>
+        {body}
+      </p>
+    </div>
+  );
+}
+
+function Step({ n, title, body }: { n: number; title: string; body: string }) {
+  return (
+    <div style={{ display: "flex", gap: 14 }}>
+      <div
+        className="cd-mono"
+        style={{
+          flex: "none",
+          width: 30,
+          height: 30,
+          borderRadius: 9,
+          display: "grid",
+          placeItems: "center",
+          background: "rgba(124,92,255,0.12)",
+          border: "1px solid rgba(124,92,255,0.3)",
+          color: "#c9bdff",
+          fontSize: 13,
+          fontWeight: 700,
+        }}
+      >
+        {n}
+      </div>
+      <div>
+        <div style={{ fontWeight: 600, fontSize: 14.5, marginBottom: 3 }}>{title}</div>
+        <div style={{ color: "var(--fg-muted)", fontSize: 13.5, lineHeight: 1.55 }}>
+          {body}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "1.25rem" }}>
+      {/* Hero */}
+      <section
+        className="cd-fade"
+        style={{ padding: "3.5rem 0 2.5rem", textAlign: "center" }}
+      >
+        <span className="cd-badge cd-badge-accent" style={{ marginBottom: 18 }}>
+          <Logo size={14} /> Fully homomorphic encryption · ERC-7984
+        </span>
+        <h1
+          style={{
+            fontSize: "clamp(2.1rem, 5vw, 3.4rem)",
+            lineHeight: 1.05,
+            letterSpacing: -1.2,
+            margin: "0 0 1rem",
+            fontWeight: 800,
+          }}
+        >
+          Distribute tokens.
+          <br />
+          <span
+            style={{
+              background: "linear-gradient(90deg,#a48bff,#38e8c6)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            Keep every amount private.
+          </span>
+        </h1>
+        <p
+          style={{
+            maxWidth: 600,
+            margin: "0 auto 1.8rem",
+            color: "var(--fg-muted)",
+            fontSize: 16,
+            lineHeight: 1.6,
+          }}
+        >
+          Cloakdrop runs confidential airdrops and bulk transfers where allocations
+          are encrypted on-chain. The recipient list and every amount stay hidden —
+          only each recipient can decrypt their own allocation.
+        </p>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          <Link href="/distribute" className="cd-btn cd-btn-primary">
+            Launch a distribution →
+          </Link>
+          <Link href="/claim" className="cd-btn cd-btn-ghost">
+            Claim your allocation
+          </Link>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+      </section>
+
+      {/* Features */}
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))",
+          gap: 14,
+          margin: "1.5rem 0",
+        }}
+      >
+        <Feature
+          icon="🔐"
+          title="Amounts encrypted on-chain"
+          body="Each allocation is an FHE ciphertext. Nobody — not even an explorer — can read who got how much."
+        />
+        <Feature
+          icon="🎯"
+          title="Only you see your share"
+          body="Recipients decrypt their own allocation with a wallet signature. Other recipients' amounts stay sealed."
+        />
+        <Feature
+          icon="⚡"
+          title="Airdrop or bulk disperse"
+          body="Signature-gated claims for campaigns, or push encrypted transfers to many recipients in one transaction."
+        />
+        <Feature
+          icon="🧩"
+          title="Built on TokenOps + Zama"
+          body="Powered by audited, factory-deployed confidential contracts via the TokenOps SDK on the Zama Protocol."
+        />
+      </section>
+
+      {/* How it works */}
+      <section
+        className="cd-card how-grid"
+        style={{
+          padding: "1.6rem 1.6rem",
+          margin: "1.5rem 0",
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "2rem",
+        }}
+      >
+        <div>
+          <h2 style={{ fontSize: 18, margin: "0 0 1.1rem" }}>For distributors</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <Step n={1} title="Upload recipients" body="Paste or upload a CSV of address,amount rows." />
+            <Step n={2} title="Encrypt & sign" body="Each amount is encrypted to its recipient and signed in your wallet." />
+            <Step n={3} title="Deploy & fund" body="A confidential airdrop is deployed and funded in one transaction." />
+            <Step n={4} title="Share the link" body="Recipients connect their wallet and claim — no list ever goes public." />
+          </div>
+        </div>
+        <div>
+          <h2 style={{ fontSize: 18, margin: "0 0 1.1rem" }}>For recipients</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <Step n={1} title="Connect wallet" body="Instantly see whether you have an allocation waiting." />
+            <Step n={2} title="Reveal privately" body="Decrypt your own amount with a signature — visible only to you." />
+            <Step n={3} title="Claim" body="Receive your confidential tokens. The amount never appears in plaintext on-chain." />
+          </div>
+        </div>
+      </section>
+
+      <footer
+        style={{
+          textAlign: "center",
+          color: "var(--fg-faint)",
+          fontSize: 12.5,
+          padding: "2rem 0 3rem",
+        }}
+      >
+        Sepolia testnet · cUSDT (ERC-7984) · Confidential distribution powered by FHE
       </footer>
     </div>
   );
