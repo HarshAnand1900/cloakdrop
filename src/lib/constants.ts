@@ -26,7 +26,7 @@ export const ACL_ADDRESS =
 
 export const WALLETCONNECT_PROJECT_ID =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ??
-  "f0e5578180851413284be061ff7c7b8f";
+  "cd8e887bc7ebcf255f29c060ba555b15";
 
 export const EXPLORER = "https://sepolia.etherscan.io";
 
