@@ -51,7 +51,7 @@ export default function DashboardPage() {
     setLoading(true);
     fetch(`/api/campaigns?admin=${address}`)
       .then(r => r.json())
-      .then(data => setCampaigns(Array.isArray(data) ? data : []))
+      .then(data => setCampaigns(Array.isArray(data?.campaigns) ? data.campaigns : Array.isArray(data) ? data : []))
       .catch(() => setCampaigns([]))
       .finally(() => setLoading(false));
   }, [isConnected, address]);

@@ -191,7 +191,7 @@ export default function ClaimPage() {
     setClaims([]);
     fetch(`/api/claims?recipient=${address}`)
       .then(r => r.json())
-      .then(data => { setClaims(Array.isArray(data) ? data : []); })
+      .then(data => { setClaims(Array.isArray(data?.claims) ? data.claims : Array.isArray(data) ? data : []); })
       .catch(() => setClaims([]))
       .finally(() => setChecking(false));
   }, [isConnected, address]);
@@ -306,7 +306,7 @@ export default function ClaimPage() {
               </a>
             </div>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 32 }}>
-              <button className="s-btn" onClick={() => { setClaimStep(1); setClaimResult(null); setChecking(true); fetch(`/api/claims?recipient=${address}`).then(r => r.json()).then(d => setClaims(Array.isArray(d) ? d : [])).finally(() => setChecking(false)); }} style={{ fontSize: 15, padding: "13px 30px" }}>
+              <button className="s-btn" onClick={() => { setClaimStep(1); setClaimResult(null); setChecking(true); fetch(`/api/claims?recipient=${address}`).then(r => r.json()).then(d => setClaims(Array.isArray(d?.claims) ? d.claims : Array.isArray(d) ? d : [])).finally(() => setChecking(false)); }} style={{ fontSize: 15, padding: "13px 30px" }}>
                 Done
               </button>
               <div onClick={() => window.location.href = "/dashboard"} style={{ border: "1.5px solid var(--line)", color: "var(--mid)", padding: "13px 24px", borderRadius: 3, fontSize: 15, fontWeight: 500, cursor: "pointer" }}>Distributions</div>

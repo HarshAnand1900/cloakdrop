@@ -51,6 +51,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await saveCampaign(campaign, claims);
-  return NextResponse.json({ ok: true, airdrop: campaign.airdrop });
+  try {
+    await saveCampaign(campaign, claims);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Most common cause: no persistent store configured on a read-only host.
+    const hint =
+      STORE_BACKEND === "file"
+        ? " — no UPSTASH_REDIS_REST_URL/TOKEN set, and the file store can't write on a read-only host (e.g. Vercel). Add Upstash env vars and redeploy."
+        : "";
+    return NextResponse.json(
+      { error: `Failed to persist campaign${hint}`, detail: msg, backend: STORE_BACKEND },
+      { status: 500 },
+    );
+  }
+  return NextResponse.json({ ok: true, airdrop: campaign.airdrop, backend: STORE_BACKEND });
 }
