@@ -22,6 +22,7 @@ import { CUSDT, TOKENOPS, OPERATOR_DEADLINE, explorerTx } from "@/lib/constants"
 import type { Campaign, ClaimRecord } from "@/lib/types";
 import { AppShell } from "@/components/AppShell";
 import { ZKCanvas } from "@/components/ZKCanvas";
+import { CanvasBackground } from "@/components/CanvasBackground";
 import { useSotto } from "@/context/SottoContext";
 import { toast } from "@/components/toast";
 import { humanizeError } from "@/components/Faucet";
@@ -164,16 +165,17 @@ export default function DistributePage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const encryptor = (zama as any).relayer;
     const token = CUSDT.wrapper as Address;
-    const phases = ["ENCRYPTING ALLOCATIONS", "GENERATING ZK PROOF", "BROADCASTING TX", "CONFIRMING ON SEPOLIA"];
 
     try {
       if (method === "airdrop") {
-        // Phase 0: operator + deploy
-        setExecPhaseIdx(0); setExecPhaseLabel(phases[0]); setExecProgress(5);
+        // Phase 0 — authorize funding (real wallet tx)
+        setExecPhaseIdx(0); setExecPhaseLabel("Approve authorization in your wallet…"); setExecProgress(5);
         const opHash = await walletClient.writeContract({ address: token, abi: erc7984OperatorAbi, functionName: "setOperator", args: [TOKENOPS.airdropFactory, OPERATOR_DEADLINE] });
+        setExecPhaseLabel("Confirming authorization on Sepolia…"); setExecProgress(12);
         await publicClient.waitForTransactionReceipt({ hash: opHash });
-        setExecProgress(15);
 
+        // Deploy + fund the airdrop (real wallet tx)
+        setExecPhaseLabel("Approve deploy & fund in your wallet…"); setExecProgress(18);
         const factory = createConfidentialAirdropFactoryClient({ publicClient, walletClient, encryptor });
         const now = Math.floor(Date.now() / 1000);
         const endTimestamp = timeLock && lockDate
@@ -184,54 +186,56 @@ export default function DistributePage() {
           userSalt: randomSalt(),
           amount: total,
         });
-        setExecProgress(30);
+        setExecPhaseLabel("Airdrop deployed · encrypting allocations…"); setExecProgress(30);
 
-        // Phase 1: encrypt per recipient
-        setExecPhaseIdx(1); setExecPhaseLabel(phases[1]);
+        // Phase 1 — encrypt + sign each allocation (real FHE + signatures)
+        setExecPhaseIdx(1);
         const claims: ClaimRecord[] = [];
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
-          setExecPhaseLabel(`Encrypting ${i + 1} / ${rows.length} · ${shortAddr(r.recipient)}`);
+          setExecPhaseLabel(`Encrypting & signing ${i + 1} / ${rows.length} · ${shortAddr(r.recipient)}`);
           setExecProgress(30 + Math.round((i + 1) / rows.length * 45));
           const enc = await encryptUint64({ encryptor, contractAddress: airdrop, userAddress: r.recipient, value: toRaw(r.amount) });
           const signature = await signClaimAuthorization({ walletClient, airdropAddress: airdrop, recipient: r.recipient, encryptedAmountHandle: enc.handle });
           claims.push({ recipient: r.recipient, handle: enc.handle, inputProof: enc.inputProof, signature, amount: toRaw(r.amount).toString() });
         }
 
-        // Phase 2: save
-        setExecPhaseIdx(2); setExecPhaseLabel(phases[2]); setExecProgress(80);
+        // Phase 2 — persist campaign
+        setExecPhaseIdx(2); setExecPhaseLabel("Saving sealed campaign…"); setExecProgress(85);
         const campaign: Campaign = {
-          airdrop, name: `Distribution #${Date.now().toString().slice(-4)}`, admin: address, token, symbol: CUSDT.symbol,
+          airdrop, name: `${ucName} #${Date.now().toString().slice(-4)}`, admin: address, token, symbol: CUSDT.symbol,
           startTime: now - 60, endTime: now + 60 * 60 * 24 * 30, txHash: hash, recipientCount: rows.length, createdAt: Date.now(),
         };
         const res = await fetch("/api/campaigns", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ campaign, claims }) });
         if (!res.ok) throw new Error("Failed to save campaign.");
 
-        // Phase 3: confirm
-        setExecPhaseIdx(3); setExecPhaseLabel(phases[3]); setExecProgress(100);
+        // Phase 3 — done
+        setExecPhaseIdx(3); setExecPhaseLabel("Sealed onchain ✓"); setExecProgress(100);
         setResult({ airdrop, txHash: hash, count: rows.length });
         toast("Airdrop deployed and funded", { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
-        await new Promise(r => setTimeout(r, 900));
+        await new Promise(r => setTimeout(r, 700));
         nav(5);
 
       } else {
-        // Disperse
-        setExecPhaseIdx(0); setExecPhaseLabel(phases[0]); setExecProgress(10);
+        // Disperse — authorize (real wallet tx)
+        setExecPhaseIdx(0); setExecPhaseLabel("Approve authorization in your wallet…"); setExecProgress(8);
         const opHash = await walletClient.writeContract({ address: token, abi: disperseOperatorAbi, functionName: "setOperator", args: [TOKENOPS.disperseSingleton, OPERATOR_DEADLINE] });
+        setExecPhaseLabel("Confirming authorization on Sepolia…"); setExecProgress(22);
         await publicClient.waitForTransactionReceipt({ hash: opHash });
-        setExecProgress(30);
 
-        setExecPhaseIdx(1); setExecPhaseLabel(phases[1]); setExecProgress(45);
+        // Encrypt + push (real FHE batch + wallet tx)
+        setExecPhaseIdx(1); setExecPhaseLabel("Encrypting all amounts in your browser…"); setExecProgress(45);
         const client = createConfidentialDisperseClient({ publicClient, walletClient, encryptor });
+        setExecPhaseLabel("Approve disperse in your wallet…"); setExecProgress(60);
         const { hash } = await client.disperse({ token, mode: "direct", recipients: rows.map(r => r.recipient), amounts: rows.map(r => toRaw(r.amount)) });
 
-        setExecPhaseIdx(2); setExecPhaseLabel(phases[2]); setExecProgress(75);
+        setExecPhaseIdx(2); setExecPhaseLabel("Confirming disperse on Sepolia…"); setExecProgress(80);
         await publicClient.waitForTransactionReceipt({ hash });
 
-        setExecPhaseIdx(3); setExecPhaseLabel(phases[3]); setExecProgress(100);
+        setExecPhaseIdx(3); setExecPhaseLabel("Sealed onchain ✓"); setExecProgress(100);
         setResult({ txHash: hash, count: rows.length });
         toast("Confidential disperse complete", { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
-        await new Promise(r => setTimeout(r, 900));
+        await new Promise(r => setTimeout(r, 700));
         nav(5);
       }
     } catch (e) {
@@ -288,10 +292,16 @@ export default function DistributePage() {
         <div style={{ height: "100%", background: "var(--accent)", transition: "width .55s cubic-bezier(.4,0,.2,1)", width: progressW }} />
       </div>
 
-      <div style={{ display: "flex", minHeight: "calc(100vh - 56px)", marginTop: 2.5 }}>
+      {/* Ambient background */}
+      <div style={{ position: "fixed", inset: "56px 0 0 0", zIndex: 0, pointerEvents: "none", opacity: 0.55 }}>
+        <CanvasBackground variant="flow" />
+      </div>
+
+      <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "center", minHeight: "calc(100vh - 56px)", marginTop: 2.5 }}>
+        <div style={{ display: "flex", width: "100%", maxWidth: step >= 4 ? 760 : 1120, transition: "max-width .4s ease" }}>
         {/* Main */}
-        <div style={{ flex: 1, padding: "46px 52px", overflowY: "auto" }}>
-          <div style={{ maxWidth: 580 }}>
+        <div style={{ flex: 1, padding: "46px 44px", overflowY: "auto", display: "flex", justifyContent: "center" }}>
+          <div style={{ maxWidth: step >= 4 ? 760 : 600, width: "100%" }}>
 
             {/* ─── STEP 1: Configure ─── */}
             {step === 1 && (
@@ -696,6 +706,7 @@ export default function DistributePage() {
             )}
           </div>
         )}
+        </div>
       </div>
 
       {/* Batch bottom panel */}

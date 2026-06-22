@@ -5,6 +5,7 @@ import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { CanvasBackground } from "@/components/CanvasBackground";
 import { useSotto } from "@/context/SottoContext";
 import { toast } from "@/components/toast";
 import { shortAddr } from "@/lib/format";
@@ -114,7 +115,10 @@ export default function DashboardPage() {
   return (
     <>
       <AppShell />
-      <div style={{ padding: "44px 52px 90px", maxWidth: 1280, margin: "0 auto", animation: "fd .3s ease both" }}>
+      <div style={{ position: "fixed", inset: "56px 0 0 0", zIndex: 0, pointerEvents: "none", opacity: 0.4 }}>
+        <CanvasBackground variant="flow" />
+      </div>
+      <div style={{ position: "relative", zIndex: 1, padding: "44px 52px 90px", maxWidth: 1280, margin: "0 auto", animation: "fd .3s ease both" }}>
 
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 22 }}>
