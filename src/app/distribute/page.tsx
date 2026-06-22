@@ -423,12 +423,22 @@ export default function DistributePage() {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 32, fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: parsed.duplicates > 0 ? 12 : 32, fontFamily: "var(--font-mono)", fontSize: 12, flexWrap: "wrap" }}>
                   <span style={{ color: "var(--green)" }}>{validCount} valid</span>
                   {invalidCount > 0 && <span style={{ color: "var(--accent)" }}>· {invalidCount} invalid</span>}
                   {parsed.errors.length > 0 && <span style={{ fontSize: 11, color: "var(--accent)" }}>{parsed.errors[0]}</span>}
                   <span style={{ color: "var(--soft)", marginLeft: "auto" }}>Total: {fmt(totalNum)} cUSDT</span>
                 </div>
+
+                {/* Duplicate-merge notice */}
+                {parsed.duplicates > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 14px", background: "rgba(111,175,142,.08)", border: "1.5px solid rgba(111,175,142,.35)", borderRadius: 3, marginBottom: 24, animation: "fd .2s ease both" }}>
+                    <span style={{ fontSize: 14 }}>↺</span>
+                    <span style={{ fontSize: 12.5, color: "var(--mid)" }}>
+                      <strong style={{ color: "var(--ink)" }}>{parsed.duplicates} duplicate {parsed.duplicates === 1 ? "address" : "addresses"} merged</strong> — amounts summed (one allocation per recipient on-chain).
+                    </span>
+                  </div>
+                )}
 
                 {/* ENS resolve */}
                 {/\.eth/.test(rawList) && (
@@ -582,32 +592,66 @@ export default function DistributePage() {
             {step === 4 && (
               <div style={{ animation: "fd .4s ease both" }}>
                 <div className="s-label" style={{ marginBottom: 14 }}>Step 04 / 04 — Sealing</div>
-                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: "0 0 24px", letterSpacing: "-.015em" }}>ZK proof circuit</h2>
+                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: "0 0 6px", letterSpacing: "-.015em" }}>ZK proof circuit</h2>
+                <p style={{ fontSize: 15, color: "var(--mid)", margin: "0 0 24px" }}>Encrypting {validCount} allocation{validCount === 1 ? "" : "s"} with FHE and sealing them on-chain. Keep this tab open.</p>
 
-                <div style={{ position: "relative", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 6, overflow: "hidden", marginBottom: 18 }}>
-                  <ZKCanvas execProgress={execProgress} execPhaseIdx={execPhaseIdx} recipients={zkRecipients} />
-                  <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 24, height: 24, borderRadius: "50%", border: "2px solid var(--line)", borderTopColor: "var(--accent)", animation: "spin .78s linear infinite" }} />
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".14em", color: "var(--accent)", whiteSpace: "nowrap" }}>{execPhaseLabel || "INITIALIZING…"}</span>
+                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, alignItems: "stretch" }} className="airdrop-grid">
+                  {/* Left: circuit + phases */}
+                  <div>
+                    <div style={{ position: "relative", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 6, overflow: "hidden", marginBottom: 12 }}>
+                      <ZKCanvas execProgress={execProgress} execPhaseIdx={execPhaseIdx} recipients={zkRecipients} />
+                      <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 10, maxWidth: "90%" }}>
+                        <div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid var(--line)", borderTopColor: "var(--accent)", animation: "spin .78s linear infinite", flexShrink: 0 }} />
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".08em", color: "var(--accent)" }}>{execPhaseLabel || "INITIALIZING…"}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 10 }}>
+                      {["Encrypt", "ZK Proof", "Broadcast", "Confirm"].map((label, i) => {
+                        const active = execPhaseIdx === i, done = execPhaseIdx > i;
+                        return (
+                          <div key={i} style={{ padding: "10px 12px", borderRadius: 3, background: done ? "rgba(111,175,142,.15)" : active ? "rgba(200,71,43,.12)" : "var(--card)", border: `1px solid ${done ? "rgba(111,175,142,.5)" : active ? "rgba(200,71,43,.5)" : "var(--line)"}`, transition: "all .4s" }}>
+                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", color: done ? "var(--green)" : active ? "var(--accent)" : "var(--soft)" }}>{done ? "✓" : `0${i + 1}`}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)", marginTop: 3 }}>{label}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ height: 4, background: "var(--line)", borderRadius: 2, overflow: "hidden", marginBottom: 6 }}>
+                      <div style={{ height: "100%", background: "linear-gradient(90deg,var(--accent),var(--green))", width: `${execProgress}%`, transition: "width .4s linear" }} />
+                    </div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--soft)", textAlign: "right" }}>{Math.round(execProgress)}%</div>
+                  </div>
+
+                  {/* Right: crypto detail + live log */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px" }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 12 }}>Cryptography</div>
+                      {[["Scheme", "TFHE · euint64"], ["Method", method], ["Token", "cUSDT"], ["Recipients", String(validCount)], ["Binding", "per-recipient"]].map(([k, v]) => (
+                        <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontFamily: "var(--font-mono)", fontSize: 11.5 }}>
+                          <span style={{ color: "var(--soft)" }}>{k}</span>
+                          <span style={{ color: "var(--ink)" }}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px", flex: 1 }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 12 }}>Live status</div>
+                      {["Encrypt", "ZK Proof", "Broadcast", "Confirm"].map((label, i) => {
+                        const active = execPhaseIdx === i, done = execPhaseIdx > i;
+                        return (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0", opacity: active || done ? 1 : 0.4 }}>
+                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: done ? "var(--green)" : active ? "var(--accent)" : "var(--soft)", animation: active ? "glow 1.4s ease-in-out infinite" : "none", flexShrink: 0 }} />
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: done ? "var(--green)" : active ? "var(--ink)" : "var(--soft)" }}>{label}</span>
+                            {done && <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--green)" }}>done</span>}
+                            {active && <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>…</span>}
+                          </div>
+                        );
+                      })}
+                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--mid)", lineHeight: 1.5 }}>
+                        {execPhaseLabel || "Preparing…"}
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 8 }}>
-                  {["Encrypt", "ZK Proof", "Broadcast", "Confirm"].map((label, i) => {
-                    const active = execPhaseIdx === i, done = execPhaseIdx > i;
-                    return (
-                      <div key={i} style={{ padding: "10px 12px", borderRadius: 3, background: done ? "rgba(111,175,142,.15)" : active ? "rgba(200,71,43,.12)" : "var(--card)", border: `1px solid ${done ? "rgba(111,175,142,.5)" : active ? "rgba(200,71,43,.5)" : "var(--line)"}`, transition: "all .4s" }}>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", color: done ? "var(--green)" : active ? "var(--accent)" : "var(--soft)" }}>0{i + 1}</div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)", marginTop: 3 }}>{label}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={{ height: 3, background: "var(--line)", borderRadius: 2, overflow: "hidden", marginBottom: 8 }}>
-                  <div style={{ height: "100%", background: "var(--accent)", width: `${execProgress}%`, transition: "width .4s linear" }} />
-                </div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--soft)", textAlign: "right" }}>{Math.round(execProgress)}%</div>
               </div>
             )}
 

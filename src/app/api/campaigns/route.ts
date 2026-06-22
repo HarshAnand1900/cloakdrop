@@ -3,6 +3,8 @@ import { isAddress } from "viem";
 import {
   saveCampaign,
   listCampaignsByAdmin,
+  getCampaign,
+  getClaimsForCampaign,
   STORE_BACKEND,
 } from "@/lib/store";
 import type { Campaign, ClaimRecord } from "@/lib/types";
@@ -10,11 +12,29 @@ import type { Campaign, ClaimRecord } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/campaigns?admin=0x... → campaigns created by that admin. */
+/**
+ * GET /api/campaigns?admin=0x...      → campaigns created by that admin.
+ * GET /api/campaigns?airdrop=0x...    → one campaign + its recipients (address + handle).
+ */
 export async function GET(req: NextRequest) {
+  const airdrop = req.nextUrl.searchParams.get("airdrop");
+  if (airdrop) {
+    if (!isAddress(airdrop)) {
+      return NextResponse.json({ error: "valid ?airdrop required" }, { status: 400 });
+    }
+    const campaign = await getCampaign(airdrop);
+    if (!campaign) {
+      return NextResponse.json({ error: "campaign not found" }, { status: 404 });
+    }
+    const claims = await getClaimsForCampaign(airdrop);
+    // Expose only what the admin already knows — addresses + ciphertext handles.
+    const recipients = claims.map((c) => ({ recipient: c.recipient, handle: c.handle }));
+    return NextResponse.json({ campaign, recipients, backend: STORE_BACKEND });
+  }
+
   const admin = req.nextUrl.searchParams.get("admin");
   if (!admin || !isAddress(admin)) {
-    return NextResponse.json({ error: "valid ?admin required" }, { status: 400 });
+    return NextResponse.json({ error: "valid ?admin or ?airdrop required" }, { status: 400 });
   }
   const campaigns = await listCampaignsByAdmin(admin);
   return NextResponse.json({ campaigns, backend: STORE_BACKEND });

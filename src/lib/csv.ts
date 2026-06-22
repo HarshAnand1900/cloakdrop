@@ -10,16 +10,22 @@ export interface ParsedRow {
 export interface ParseResult {
   rows: ParsedRow[];
   errors: string[];
+  /** How many rows were merged because their address appeared more than once. */
+  duplicates: number;
 }
 
 /**
  * Parse "address,amount" lines (CSV or whitespace separated). Tolerates a
  * header row, blank lines, and either comma/space/tab separators.
- * Deduplicates by address (last wins) — the contract keys claims per recipient.
+ *
+ * An address listed more than once is MERGED by summing its amounts — on-chain
+ * each recipient can hold only one allocation per airdrop, so the alternative
+ * (silently dropping all but the last) would lose funds.
  */
 export function parseRecipients(text: string): ParseResult {
   const errors: string[] = [];
   const map = new Map<string, ParsedRow>();
+  let duplicates = 0;
 
   const lines = text.split(/\r?\n/);
   lines.forEach((line, i) => {
@@ -44,8 +50,17 @@ export function parseRecipients(text: string): ParseResult {
       return;
     }
     const checksummed = getAddress(addrPart);
-    map.set(checksummed.toLowerCase(), { recipient: checksummed, amount });
+    const key = checksummed.toLowerCase();
+    const existing = map.get(key);
+    if (existing) {
+      // Sum, rounding to 6 decimals so parseUnits(amount, 6) stays valid.
+      const summed = Math.round((Number(existing.amount) + Number(amount)) * 1e6) / 1e6;
+      map.set(key, { recipient: checksummed, amount: String(summed) });
+      duplicates++;
+    } else {
+      map.set(key, { recipient: checksummed, amount });
+    }
   });
 
-  return { rows: [...map.values()], errors };
+  return { rows: [...map.values()], errors, duplicates };
 }

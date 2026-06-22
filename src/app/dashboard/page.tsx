@@ -6,10 +6,10 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { CanvasBackground } from "@/components/CanvasBackground";
+import { DistributionDetail } from "@/components/DistributionDetail";
 import { useSotto } from "@/context/SottoContext";
 import { toast } from "@/components/toast";
 import { shortAddr } from "@/lib/format";
-import { explorerAddr } from "@/lib/constants";
 import type { Campaign } from "@/lib/types";
 
 type DashTab = "records" | "explorer" | "analytics" | "settings";
@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [showRevoke, setShowRevoke] = useState(false);
+  const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSaved, setWebhookSaved] = useState(false);
   const [webhookEnabled, setWebhookEnabled] = useState(false);
@@ -192,7 +193,7 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </div>
-              <div className="s-card" style={{ padding: 22, position: "relative", overflow: "hidden" }}>
+              <div className="s-card" onClick={() => campaigns[0] && setDetailCampaign(campaigns[0])} style={{ padding: 22, position: "relative", overflow: "hidden", cursor: campaigns[0] ? "pointer" : "default" }}>
                 <div style={{ position: "absolute", top: 14, right: 16, fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".16em", color: "var(--green)", border: "1px solid var(--green)", padding: "4px 8px", borderRadius: 2, transform: "rotate(-3deg)" }}>SEALED</div>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 9 }}>Latest</div>
                 {campaigns[0] ? (
@@ -229,10 +230,18 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 campaigns.map((c, i) => (
-                  <div key={c.airdrop} style={{ display: "grid", gridTemplateColumns: "2fr 0.9fr 0.8fr 1.1fr 0.6fr 0.6fr", gap: 14, alignItems: "center", padding: "15px 22px", borderBottom: "1px solid var(--line)", animation: `rowIn .45s ${(i * 0.08).toFixed(2)}s cubic-bezier(.22,.85,.2,1) both`, transition: "background .18s" }}>
-                    <div>
-                      <div style={{ fontFamily: "var(--font-serif)", fontSize: 21, color: "var(--ink)" }}>{c.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 2 }}>{c.symbol} · {shortAddr(c.airdrop)}</div>
+                  <div
+                    key={c.airdrop}
+                    onClick={() => setDetailCampaign(c)}
+                    className="dash-row"
+                    style={{ display: "grid", gridTemplateColumns: "2fr 0.9fr 0.8fr 1.1fr 0.6fr 0.7fr", gap: 14, alignItems: "center", padding: "15px 22px", borderBottom: "1px solid var(--line)", animation: `rowIn .45s ${(i * 0.08).toFixed(2)}s cubic-bezier(.22,.85,.2,1) both`, transition: "background .18s", cursor: "pointer" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 6, height: 32, borderRadius: 2, background: "linear-gradient(var(--accent),var(--green))", opacity: .7, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontFamily: "var(--font-serif)", fontSize: 21, color: "var(--ink)" }}>{c.name}</div>
+                        <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 2 }}>{c.symbol} · {shortAddr(c.airdrop)}</div>
+                      </div>
                     </div>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{new Date(c.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{c.recipientCount}</span>
@@ -241,9 +250,9 @@ export default function DashboardPage() {
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT</span>
                     </div>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid var(--green)", padding: "3px 7px", borderRadius: 2, justifySelf: "start" }}>Sealed</span>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <a href={explorerAddr(c.airdrop)} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "3px 7px", borderRadius: 2, textDecoration: "none" }}>↗</a>
-                      <div onClick={() => setShowRevoke(true)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "3px 7px", borderRadius: 2, cursor: "pointer" }}>Revoke</div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", whiteSpace: "nowrap" }}>Details →</span>
+                      <div onClick={(e) => { e.stopPropagation(); setShowRevoke(true); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "3px 7px", borderRadius: 2, cursor: "pointer" }}>Revoke</div>
                     </div>
                   </div>
                 ))
@@ -371,6 +380,7 @@ export default function DashboardPage() {
       </div>
 
       {showRevoke && <RevokeModal onConfirm={() => { setShowRevoke(false); toast("Distribution revoked", { kind: "success" }); }} onCancel={() => setShowRevoke(false)} />}
+      {detailCampaign && <DistributionDetail campaign={detailCampaign} onClose={() => setDetailCampaign(null)} />}
     </>
   );
 }

@@ -189,6 +189,9 @@ textarea { resize: none; }
 .anim-fd    { animation:fd .3s ease both; }
 .anim-slide-up { animation:slideUp .38s cubic-bezier(.22,.85,.2,1) both; }
 
+/* Dashboard row hover */
+.dash-row:hover { background: var(--overlay); }
+
 /* Responsive grid helpers */
 @media(max-width:760px) {
   .airdrop-grid, .how-grid { grid-template-columns:1fr !important; }
