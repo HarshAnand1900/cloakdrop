@@ -10,6 +10,7 @@ import { RelayerWeb, SepoliaConfig, indexedDBStorage } from "@zama-fhe/sdk";
 import { ViemSigner } from "@zama-fhe/sdk/viem";
 import { wagmiConfig } from "@/lib/wagmi";
 import { CHAIN_ID } from "@/lib/constants";
+import { SottoProvider } from "@/context/SottoContext";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -105,7 +106,9 @@ export function Providers({ children }: { children: ReactNode }) {
             overlayBlur: "small",
           })}
         >
-          {mounted ? <ZamaLayer>{children}</ZamaLayer> : <BootLoader />}
+          <SottoProvider>
+            {mounted ? <ZamaLayer>{children}</ZamaLayer> : <BootLoader />}
+          </SottoProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
