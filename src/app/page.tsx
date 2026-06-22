@@ -16,6 +16,7 @@ export default function LandingPage() {
   const [displayAmt, setDisplayAmt] = useState("•••••••");
 
   const isDark = sotto.mode === "dark";
+  const [nothingRevealed, setNothingRevealed] = useState(false);
   const landingInk = isDark ? "#F4EAD4" : "#12100D";
   const landingPage = isDark ? "#100C09" : "#EDE8DC";
   const landingMid = isDark ? "#9A8670" : "#4A4438";
@@ -99,7 +100,30 @@ export default function LandingPage() {
                 ERC-7984 · Zama Protocol · FHE
               </div>
               <h1 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: "clamp(52px,6.5vw,86px)", lineHeight: .96, letterSpacing: "-.018em", margin: 0, color: landingInk }}>
-                Pay everyone.<br />Publish&nbsp;<em style={{ fontStyle: "italic", color: "#C8472B" }}>nothing.</em>
+                Pay everyone.<br />
+                Publish&nbsp;
+                <span
+                  style={{ position: "relative", display: "inline-block", verticalAlign: "baseline" }}
+                  onMouseEnter={() => setNothingRevealed(true)}
+                  onClick={() => setNothingRevealed(true)}
+                >
+                  <em style={{ fontStyle: "italic", color: "#C8472B" }}>nothing.</em>
+                  {/* Censorship bar — hover/click to reveal */}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      left: -4, right: -8, top: "12%", bottom: "12%",
+                      background: landingInk,
+                      borderRadius: 2,
+                      pointerEvents: nothingRevealed ? "none" : "auto",
+                      cursor: "pointer",
+                      transform: nothingRevealed ? "translateX(14px) skewX(-8deg)" : "translateX(0) skewX(0)",
+                      opacity: nothingRevealed ? 0 : 1,
+                      transition: "transform .55s cubic-bezier(.2,.85,.2,1), opacity .45s ease, background .4s",
+                    }}
+                  />
+                </span>
               </h1>
               <p style={{ fontSize: 18, lineHeight: 1.6, color: landingMid, maxWidth: 480, margin: "28px 0 0", fontWeight: 300 }}>
                 Sotto disperses tokens to any number of recipients in a single confidential transaction. Amounts stay encrypted onchain — only each recipient can decrypt what&apos;s theirs.
