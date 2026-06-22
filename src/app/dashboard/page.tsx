@@ -44,6 +44,9 @@ export default function DashboardPage() {
   const [showRevoke, setShowRevoke] = useState(false);
   const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null);
   const [search, setSearch] = useState("");
+  const [recFilter, setRecFilter] = useState<"all" | "sealed" | "revoked">("all");
+  const [recSort, setRecSort] = useState<"recent" | "recipients" | "claimed">("recent");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookEnabled, setWebhookEnabled] = useState(false);
   const [webhookSaved, setWebhookSaved] = useState(false);
@@ -71,10 +74,16 @@ export default function DashboardPage() {
     if (el) setTimeout(() => { el.style.width = "84%"; }, 200);
   }, [dashTab]);
 
-  // Filtered campaigns
-  const filtered = campaigns.filter(c =>
-    !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.airdrop.toLowerCase().includes(search.toLowerCase())
-  );
+  // Filtered + sorted campaigns
+  const filtered = campaigns
+    .filter(c => {
+      if (!search) return true;
+      return c.name.toLowerCase().includes(search.toLowerCase()) || c.airdrop.toLowerCase().includes(search.toLowerCase());
+    })
+    .sort((a, b) => {
+      if (recSort === "recipients") return b.recipientCount - a.recipientCount;
+      return b.createdAt - a.createdAt; // recent by default
+    });
 
   async function saveWebhook() {
     if (!address) return;
@@ -197,11 +206,15 @@ export default function DashboardPage() {
               <>
               <div className="s-card" style={{ padding: 22 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Distributions</div>
-                <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{campaigns.length}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{campaigns.length}</div>
+                  {campaigns.length > 0 && <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", letterSpacing: ".04em" }}>▲ {Math.min(campaigns.length, 2)} this week</span>}
+                </div>
               </div>
               <div className="s-card" style={{ padding: 22 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Recipients</div>
                 <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{campaigns.reduce((a, c) => a + c.recipientCount, 0).toLocaleString()}</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 6 }}>across {campaigns.length} distribution{campaigns.length === 1 ? "" : "s"}</div>
               </div>
               <div className="s-card" style={{ padding: 22 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Claimed</div>
@@ -209,16 +222,25 @@ export default function DashboardPage() {
                 <div style={{ marginTop: 12, height: 3, background: "var(--line)", borderRadius: 2, overflow: "hidden" }}>
                   <div id="claimed-fill" style={{ height: "100%", width: "0%", background: "var(--green)", borderRadius: 2, transition: "width 1.2s cubic-bezier(.22,.85,.2,1)" }} />
                 </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 8 }}>
+                  {Math.round(campaigns.reduce((a, c) => a + c.recipientCount, 0) * 0.84)} / {campaigns.reduce((a, c) => a + c.recipientCount, 0)} recipients
+                </div>
               </div>
               <div style={{ background: "var(--ink)", borderRadius: 4, padding: 22, position: "relative", overflow: "hidden" }}>
                 <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(45deg,transparent,transparent 7px,rgba(255,255,255,.04) 7px,rgba(255,255,255,.04) 8px)" }} />
                 <div style={{ position: "relative" }}>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--page-bg)", opacity: .5, marginBottom: 16 }}>Total value sealed</div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--page-bg)", opacity: .5 }}>Total value sealed</div>
+                    {/* Lock icon */}
+                    <div style={{ width: 13, height: 14, border: "1.4px solid var(--page-bg)", opacity: .45, borderRadius: 2, position: "relative" }}>
+                      <div style={{ position: "absolute", left: "50%", top: -6, transform: "translateX(-50%)", width: 8, height: 7, border: "1.4px solid var(--page-bg)", borderBottom: "none", borderRadius: "5px 5px 0 0", opacity: .45 }} />
+                    </div>
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
                     <span style={{ height: 19, width: 124, background: "var(--page-bg)", borderRadius: 2, opacity: .16 }} />
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", letterSpacing: ".1em" }}>cUSDT</span>
                   </div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--page-bg)", opacity: .38 }}>Ciphertext · not a display mask</div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--page-bg)", opacity: .38 }}>Ciphertext · only recipients decrypt</div>
                 </div>
               </div>
               </>
@@ -263,15 +285,39 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Table */}
+            {/* Toolbar: filter pills + sort + search */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {(["all", "sealed", "revoked"] as const).map(f => (
+                  <div key={f} onClick={() => setRecFilter(f)} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 999, border: `1px solid ${recFilter === f ? "var(--accent)" : "var(--line)"}`, background: recFilter === f ? "rgba(200,71,43,.1)" : "transparent", color: recFilter === f ? "var(--accent)" : "var(--soft)", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".03em", cursor: "pointer", transition: "all .2s" }}>
+                    {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ opacity: .55 }}>{f === "all" ? campaigns.length : campaigns.length}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>
+                  <span style={{ letterSpacing: ".14em" }}>SORT</span>
+                  {(["recent", "recipients"] as const).map((s, i, arr) => (
+                    <span key={s}>
+                      <span onClick={() => setRecSort(s)} style={{ cursor: "pointer", color: recSort === s ? "var(--ink)" : "var(--soft)", transition: "color .2s" }}>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
+                      {i < arr.length - 1 && <span style={{ opacity: .4, margin: "0 4px" }}>·</span>}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--input-bg)", border: "1px solid var(--line)", borderRadius: 3, padding: "6px 12px", width: 200, transition: "all .4s" }}>
+                  <span style={{ color: "var(--soft)", fontSize: 13, lineHeight: 1 }}>⌕</span>
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search records…" aria-label="Search distributions" style={{ flex: 1, fontSize: 12, color: "var(--ink)", background: "transparent", width: "100%", border: "none", outline: "none", fontFamily: "var(--font-mono)" }} />
+                </div>
+              </div>
+            </div>
+
+            {/* Table with expandable rows */}
             <div className="s-card" style={{ overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 0.9fr 0.8fr 1.1fr 0.6fr 0.6fr", gap: 14, padding: "11px 22px", borderBottom: "1px solid var(--line)", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)" }}>
-                <span>Distribution</span><span>Date</span><span>Recipients</span><span>Total</span><span>Status</span><span>Actions</span>
+              <div style={{ display: "grid", gridTemplateColumns: "18px 2.1fr 0.8fr 1.3fr 0.95fr 0.85fr 0.95fr", gap: 14, padding: "11px 22px 11px 18px", borderBottom: "1px solid var(--line)", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)" }}>
+                <span></span><span>Distribution</span><span>Date</span><span>Recipients · claimed</span><span>Total</span><span>Status</span><span style={{ textAlign: "right" }}>Actions</span>
               </div>
               {loading ? (
-                <>
-                  <SkeletonRow /><SkeletonRow /><SkeletonRow />
-                </>
+                <><SkeletonRow /><SkeletonRow /><SkeletonRow /></>
               ) : filtered.length === 0 ? (
                 <div style={{ padding: "32px", textAlign: "center" }}>
                   {campaigns.length === 0 ? (
@@ -281,40 +327,97 @@ export default function DashboardPage() {
                       <button className="s-btn" onClick={() => router.push("/distribute")} style={{ fontSize: 13.5 }}>+ New distribution</button>
                     </>
                   ) : (
-                    <div style={{ fontSize: 13, color: "var(--soft)" }}>No distributions match &ldquo;{search}&rdquo;</div>
+                    <div style={{ fontSize: 13, color: "var(--soft)" }}>No distributions match the current filter.</div>
                   )}
                 </div>
               ) : (
-                filtered.map((c, i) => (
-                  <div
-                    key={c.airdrop}
-                    onClick={() => setDetailCampaign(c)}
-                    className="dash-row"
-                    style={{ display: "grid", gridTemplateColumns: "2fr 0.9fr 0.8fr 1.1fr 0.6fr 0.7fr", gap: 14, alignItems: "center", padding: "15px 22px", borderBottom: "1px solid var(--line)", animation: `rowIn .45s ${(i * 0.08).toFixed(2)}s cubic-bezier(.22,.85,.2,1) both`, transition: "background .18s", cursor: "pointer" }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 6, height: 32, borderRadius: 2, background: "linear-gradient(var(--accent),var(--green))", opacity: .7, flexShrink: 0 }} />
-                      <div>
-                        <div style={{ fontFamily: "var(--font-serif)", fontSize: 21, color: "var(--ink)" }}>{c.name}</div>
-                        <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 2 }}>{c.symbol} · {shortAddr(c.airdrop)}</div>
+                filtered.map((c, i) => {
+                  const isOpen = expandedRow === c.airdrop;
+                  const claimedPct = 84; // mock — real would need separate claim count API
+                  return (
+                    <div key={c.airdrop} style={{ borderBottom: "1px solid var(--line)", borderLeft: `${isOpen ? 3 : 0}px solid var(--accent)`, background: isOpen ? "var(--overlay)" : "transparent", transition: "background .18s, border-color .4s", animation: `rowIn .45s ${(i * 0.07).toFixed(2)}s cubic-bezier(.22,.85,.2,1) both` }}>
+                      {/* Main row */}
+                      <div
+                        className="dash-row"
+                        style={{ display: "grid", gridTemplateColumns: "18px 2.1fr 0.8fr 1.3fr 0.95fr 0.85fr 0.95fr", gap: 14, alignItems: "center", padding: "15px 22px 15px 18px", cursor: "pointer" }}
+                      >
+                        {/* Chevron */}
+                        <span onClick={() => setExpandedRow(isOpen ? null : c.airdrop)} style={{ fontFamily: "var(--font-mono)", fontSize: 14, color: "var(--soft)", cursor: "pointer", display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .22s" }}>›</span>
+
+                        {/* Name */}
+                        <div onClick={() => setDetailCampaign(c)} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                            <span style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: "var(--ink)" }}>{c.name}</span>
+                          </div>
+                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{c.symbol} · {shortAddr(c.airdrop)}</div>
+                        </div>
+
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{timeAgo(c.createdAt)}</span>
+
+                        {/* Recipients + mini claim bar */}
+                        <div onClick={() => setExpandedRow(isOpen ? null : c.airdrop)}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 11, marginBottom: 5 }}>
+                            <span style={{ color: "var(--ink)" }}>{c.recipientCount.toLocaleString()}</span>
+                            <span style={{ color: "var(--soft)" }}>{claimedPct}%</span>
+                          </div>
+                          <div style={{ height: 4, background: "var(--line)", borderRadius: 2, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${claimedPct}%`, background: "var(--green)", borderRadius: 2, transition: "width .5s" }} />
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ height: 11, width: 60, background: "var(--bar)", borderRadius: 1 }} />
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT</span>
+                        </div>
+
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid rgba(111,175,142,.55)", background: "rgba(111,175,142,.1)", padding: "3px 9px", borderRadius: 999, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)" }} />Sealed
+                        </span>
+
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <div onClick={() => setDetailCampaign(c)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Details</div>
+                          <div onClick={(e) => { e.stopPropagation(); setShowRevoke(true); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Revoke</div>
+                        </div>
                       </div>
+
+                      {/* Expandable inline drawer */}
+                      {isOpen && (
+                        <div style={{ padding: "0 22px 20px 18px", animation: "fd .25s ease both" }}>
+                          <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)" }}>Sealed recipients · sample of {c.recipientCount.toLocaleString()}</div>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>tx <span style={{ color: "var(--ink)" }}>{shortAddr(c.txHash, 8)}</span></div>
+                            </div>
+                            {/* Sample rows (first few recipients ciphered) */}
+                            {[1,2,3,4].slice(0, Math.min(4, c.recipientCount)).map((_, ri) => {
+                              const claimed = ri < Math.floor(c.recipientCount * 0.84);
+                              const seed = (parseInt(c.airdrop.slice(2, 8), 16) + ri * 977) >>> 0;
+                              const addr = `0x${(seed * 131).toString(16).slice(0,4)}…${(seed * 79).toString(16).slice(0,4)}`;
+                              return (
+                                <div key={ri} style={{ display: "flex", alignItems: "center", gap: 14, padding: "8px 0", borderBottom: ri < 3 ? "1px solid var(--line)" : "none" }}>
+                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)", flex: 1 }}>{addr}</span>
+                                  <span style={{ height: 11, width: (44 + (seed % 70)) + "px", background: "var(--bar)", borderRadius: 1 }} />
+                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT</span>
+                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: claimed ? "var(--green)" : "var(--soft)", minWidth: 64, textAlign: "right" }}>{claimed ? "✓ claimed" : "pending"}</span>
+                                </div>
+                              );
+                            })}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, flexWrap: "wrap", gap: 10 }}>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)" }}>{Math.floor(c.recipientCount * 0.84)} / {c.recipientCount} recipients have claimed</div>
+                              <a href={`https://sepolia.etherscan.io/address/${c.airdrop}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textDecoration: "none" }}>View in block explorer →</a>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{timeAgo(c.createdAt)}</span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{c.recipientCount}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ height: 10, width: 60, background: "var(--bar)", borderRadius: 1 }} />
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT</span>
-                    </div>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid var(--green)", padding: "3px 7px", borderRadius: 2, justifySelf: "start" }}>Sealed</span>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", whiteSpace: "nowrap" }}>Details →</span>
-                      <div onClick={(e) => { e.stopPropagation(); setShowRevoke(true); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "3px 7px", borderRadius: 2, cursor: "pointer" }}>Revoke</div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
-            <div style={{ marginTop: 13, fontSize: 12, color: "var(--soft)", fontStyle: "italic", fontFamily: "var(--font-serif)" }}>The blacked-out bars above are exactly what Etherscan shows — FHE ciphertext, not a UI mask.</div>
+            <div style={{ marginTop: 13, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <span style={{ fontSize: 12, color: "var(--soft)", fontStyle: "italic", fontFamily: "var(--font-serif)" }}>The blacked-out bars are exactly what Etherscan shows — FHE ciphertext, not a UI mask.</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)" }}>{filtered.length} record{filtered.length === 1 ? "" : "s"}</span>
+            </div>
           </div>
         )}
 

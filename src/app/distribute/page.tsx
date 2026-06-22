@@ -25,6 +25,7 @@ import { ZKCanvas } from "@/components/ZKCanvas";
 import { CanvasBackground } from "@/components/CanvasBackground";
 import { InfoTip } from "@/components/Tooltip";
 import { QRCode } from "@/components/QRCode";
+import { StepRail } from "@/components/StepRail";
 import { useSotto } from "@/context/SottoContext";
 import { toast } from "@/components/toast";
 import { humanizeError } from "@/components/Faucet";
@@ -306,11 +307,23 @@ export default function DistributePage() {
         <div style={{ flex: 1, padding: "46px 44px", overflowY: "auto", display: "flex", justifyContent: "center" }}>
           <div style={{ maxWidth: step >= 4 ? 760 : 600, width: "100%" }}>
 
+            {/* Step rail — visible on steps 1-4 */}
+            {step <= 4 && (
+              <StepRail
+                current={step}
+                steps={[
+                  { n: "01", label: "Configure" },
+                  { n: "02", label: "Recipients" },
+                  { n: "03", label: "Review" },
+                  { n: "04", label: "Seal" },
+                ]}
+              />
+            )}
+
             {/* ─── STEP 1: Configure ─── */}
             {step === 1 && (
               <div className="anim-slide-up">
-                <div className="s-label" style={{ marginBottom: 14 }}>Step 01 / 04 — Configure</div>
-                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: 0, letterSpacing: "-.015em" }}>What kind of distribution?</h2>
+                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: "0 0 4px", letterSpacing: "-.015em" }}>What kind of distribution?</h2>
                 <p style={{ fontSize: 15, color: "var(--mid)", margin: "10px 0 22px" }}>Or start from a template:</p>
 
                 {/* First-run hint */}
@@ -416,7 +429,6 @@ export default function DistributePage() {
             {/* ─── STEP 2: Recipients ─── */}
             {step === 2 && (
               <div style={{ animation: `${prevStep < 2 ? "slideL" : "slideR"} .38s cubic-bezier(.22,.85,.2,1) both` }}>
-                <div className="s-label" style={{ marginBottom: 14 }}>Step 02 / 04 — Recipients</div>
                 <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: 0, letterSpacing: "-.015em" }}>Add addresses</h2>
                 <p style={{ fontSize: 15, color: "var(--mid)", margin: "10px 0 22px" }}>One per line: <span style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>address, amount</span>. Encrypted locally — nothing sent yet.</p>
 
@@ -558,7 +570,6 @@ export default function DistributePage() {
             {/* ─── STEP 3: Review ─── */}
             {step === 3 && (
               <div style={{ animation: `${prevStep < 3 ? "slideL" : "slideR"} .38s cubic-bezier(.22,.85,.2,1) both` }}>
-                <div className="s-label" style={{ marginBottom: 14 }}>Step 03 / 04 — Review · last plaintext view</div>
                 <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: 0, letterSpacing: "-.015em" }}>Confirm & seal</h2>
                 <p style={{ fontSize: 15, color: "var(--mid)", margin: "10px 0 24px" }}>After sealing, only recipients can decrypt their amounts.</p>
 
@@ -617,7 +628,6 @@ export default function DistributePage() {
             {/* ─── STEP 4: ZK Sealing ─── */}
             {step === 4 && (
               <div style={{ animation: "fd .4s ease both" }}>
-                <div className="s-label" style={{ marginBottom: 14 }}>Step 04 / 04 — Sealing</div>
                 <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: "0 0 6px", letterSpacing: "-.015em" }}>ZK proof circuit</h2>
                 <p style={{ fontSize: 15, color: "var(--mid)", margin: "0 0 24px" }}>Encrypting {validCount} allocation{validCount === 1 ? "" : "s"} with FHE and sealing them on-chain. Keep this tab open.</p>
 
