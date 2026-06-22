@@ -83,7 +83,7 @@ export default function LandingPage() {
               <span style={{ fontFamily: "var(--font-serif)", fontSize: 24, color: landingInk }}>Sotto</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 30 }}>
-              <a href="https://docs.zama.ai/protocol" target="_blank" rel="noreferrer" style={{ fontSize: 14, color: landingMid, cursor: "pointer", textDecoration: "none" }}>Docs</a>
+              <span onClick={() => router.push("/docs")} style={{ fontSize: 14, color: landingMid, cursor: "pointer" }}>Docs</span>
               <span onClick={sotto.toggleMode} style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: landingSoft, cursor: "pointer", letterSpacing: ".08em" }}>{sotto.modeLabel}</span>
               <div onClick={goCreate} style={{ display: "flex", alignItems: "center", gap: 8, background: landingInk, color: landingPage, padding: "10px 20px", borderRadius: 2, fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all .4s" }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "float 2.4s ease-in-out infinite" }} />

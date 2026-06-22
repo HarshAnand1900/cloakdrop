@@ -1,10 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useRouter, usePathname } from "next/navigation";
 import { useSotto } from "@/context/SottoContext";
-import { shortAddr } from "@/lib/format";
+import { shortAddr, timeAgo } from "@/lib/format";
 
 export function AppShell() {
   const { address, isConnected } = useAccount();
@@ -13,6 +14,16 @@ export function AppShell() {
   const path = usePathname();
   const sotto = useSotto();
   const isDark = sotto.mode === "dark";
+
+  // Real activity count for the bell badge.
+  const [activityCount, setActivityCount] = useState(0);
+  useEffect(() => {
+    if (!isConnected || !address) { setActivityCount(0); return; }
+    fetch(`/api/campaigns?admin=${address}`)
+      .then(r => r.json())
+      .then(d => setActivityCount(Array.isArray(d?.campaigns) ? d.campaigns.length : 0))
+      .catch(() => setActivityCount(0));
+  }, [isConnected, address]);
 
   const nav = [
     { label: "New distribution", href: "/distribute" },
@@ -116,8 +127,8 @@ export function AppShell() {
             <span style={{ position: "absolute", left: 0.5, top: 9.5, width: 14, height: 1.6, background: "var(--mid)", borderRadius: 2 }} />
             <span style={{ position: "absolute", left: 6, top: 11.5, width: 3, height: 3, borderRadius: "50%", background: "var(--mid)" }} />
           </span>
-          {!sotto.notifRead && (
-            <span style={{ position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: "50%", background: "var(--accent)", fontFamily: "var(--font-mono)", fontSize: 8, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>3</span>
+          {!sotto.notifRead && activityCount > 0 && (
+            <span style={{ position: "absolute", top: -4, right: -4, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 7, background: "var(--accent)", fontFamily: "var(--font-mono)", fontSize: 8, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{activityCount > 9 ? "9+" : activityCount}</span>
           )}
         </div>
 
@@ -147,25 +158,29 @@ export function AppShell() {
 
 function SDKDrawer() {
   const sotto = useSotto();
+  // The actual calls Sotto makes — copied from src/app/distribute/page.tsx.
   const lines = [
-    { text: `import { TokenOps } from '@tokenops/sdk';`, c: "var(--mid)" },
+    { text: `import {`, c: "var(--ink)" },
+    { text: `  createConfidentialAirdropFactoryClient,`, c: "var(--mid)" },
+    { text: `  encryptUint64, signClaimAuthorization,`, c: "var(--mid)" },
+    { text: `} from '@tokenops/sdk/fhe-airdrop';`, c: "var(--ink)" },
     { text: ``, c: "var(--soft)" },
-    { text: `// Initialize on Sepolia`, c: "var(--soft)" },
-    { text: `const client = new TokenOps({`, c: "var(--ink)" },
-    { text: `  network: 'sepolia',`, c: "#6FAF8E" },
-    { text: `  wallet: await getWallet(),`, c: "var(--mid)" },
-    { text: `});`, c: "var(--ink)" },
+    { text: `// 1 · deploy + fund the sealed airdrop`, c: "var(--soft)" },
+    { text: `const factory = createConfidentialAirdropFactoryClient(`, c: "var(--ink)" },
+    { text: `  { publicClient, walletClient, encryptor });`, c: "var(--ink)" },
+    { text: `const { hash, airdrop } =`, c: "var(--ink)" },
+    { text: `  await factory.createAndFundConfidentialAirdrop({`, c: "var(--ink)" },
+    { text: `    params: { token, startTimestamp, endTimestamp,`, c: "#6FAF8E" },
+    { text: `      canExtendClaimWindow: true, admin },`, c: "#6FAF8E" },
+    { text: `    userSalt, amount: total });`, c: "#6FAF8E" },
     { text: ``, c: "var(--soft)" },
-    { text: `// Create confidential distribution`, c: "var(--soft)" },
-    { text: `const dist = await client.distribution.create({`, c: "var(--ink)" },
-    { text: `  token:   'cUSDT',`, c: "#6FAF8E" },
-    { text: `  method: 'airdrop',`, c: "#6FAF8E" },
-    { text: `  recipients: encryptRecipients([...]),`, c: "var(--ink)" },
-    { text: `});`, c: "var(--ink)" },
-    { text: ``, c: "var(--soft)" },
-    { text: `// Generate ZK proof + seal`, c: "var(--soft)" },
-    { text: `const proof = await dist.generateZKProof();`, c: "var(--mid)" },
-    { text: `const tx = await dist.seal({ proof });`, c: "var(--mid)" },
+    { text: `// 2 · FHE-encrypt each amount to its recipient`, c: "var(--soft)" },
+    { text: `const enc = await encryptUint64({ encryptor,`, c: "var(--ink)" },
+    { text: `  contractAddress: airdrop, userAddress: recipient,`, c: "var(--mid)" },
+    { text: `  value });`, c: "var(--mid)" },
+    { text: `const sig = await signClaimAuthorization({`, c: "var(--ink)" },
+    { text: `  walletClient, airdropAddress: airdrop,`, c: "var(--mid)" },
+    { text: `  recipient, encryptedAmountHandle: enc.handle });`, c: "var(--mid)" },
   ];
   return (
     <>
@@ -174,7 +189,7 @@ function SDKDrawer() {
         <div style={{ padding: "24px 26px 18px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <div>
             <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: "var(--ink)" }}>SDK Preview</div>
-            <div style={{ fontSize: 12.5, color: "var(--mid)", marginTop: 3 }}>Live-generated from your current configuration</div>
+            <div style={{ fontSize: 12.5, color: "var(--mid)", marginTop: 3 }}>Example integration with the TokenOps SDK</div>
           </div>
           <button onClick={sotto.toggleSdk} aria-label="Close SDK drawer" style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--mid)", fontSize: 18, background: "none", border: "none" }}>✕</button>
         </div>
@@ -196,12 +211,32 @@ function SDKDrawer() {
 
 function NotifDrawer() {
   const sotto = useSotto();
-  const notifs = [
-    { title: "Distribution sealed · recipients ready to claim", time: "2 min ago", dot: "var(--accent)", glow: true },
-    { title: "0x4f29…b2A1 claimed their allocation", time: "18 min ago", dot: "#6FAF8E", glow: true },
-    { title: "0xc1aE…9Fd0 claimed their allocation", time: "1h ago", dot: "#6FAF8E", glow: false },
-    { title: "Previous distribution sealed · 37 recipients", time: "3 days ago", dot: "var(--soft)", glow: false },
-  ];
+  const { address } = useAccount();
+  const [notifs, setNotifs] = useState<{ title: string; time: string; dot: string; glow: boolean }[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  // Build REAL activity from the connected admin's campaigns.
+  useEffect(() => {
+    if (!address) { setLoaded(true); return; }
+    fetch(`/api/campaigns?admin=${address}`)
+      .then(r => r.json())
+      .then(d => {
+        const campaigns = Array.isArray(d?.campaigns) ? d.campaigns : [];
+        const items = campaigns
+          .sort((a: { createdAt: number }, b: { createdAt: number }) => b.createdAt - a.createdAt)
+          .slice(0, 6)
+          .map((c: { name: string; recipientCount: number; createdAt: number }, i: number) => ({
+            title: `${c.name} sealed · ${c.recipientCount} recipient${c.recipientCount === 1 ? "" : "s"} ready to claim`,
+            time: timeAgo(c.createdAt),
+            dot: i === 0 ? "var(--accent)" : "#6FAF8E",
+            glow: i === 0,
+          }));
+        setNotifs(items);
+      })
+      .catch(() => setNotifs([]))
+      .finally(() => setLoaded(true));
+  }, [address]);
+
   return (
     <>
       <div onClick={sotto.toggleNotif} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(6,5,4,.38)", backdropFilter: "blur(3px)", animation: "fd .2s ease both" }} />
@@ -211,15 +246,26 @@ function NotifDrawer() {
           <button onClick={sotto.markAllRead} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", cursor: "pointer", background: "none", border: "none" }}>Mark all read</button>
         </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {notifs.map((n, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "16px 22px", borderBottom: "1px solid var(--line)", animation: `notifIn .3s ${(i * 0.06).toFixed(2)}s ease both` }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: n.dot, flexShrink: 0, marginTop: 5, animation: n.glow ? "glow 2s ease-in-out infinite" : "none" }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.4 }}>{n.title}</div>
-                <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 4, fontFamily: "var(--font-mono)" }}>{n.time}</div>
-              </div>
+          {!loaded ? (
+            <div style={{ padding: "22px", display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="s-spinner" style={{ width: 14, height: 14 }} />
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>Loading activity…</span>
             </div>
-          ))}
+          ) : notifs.length === 0 ? (
+            <div style={{ padding: "32px 22px", textAlign: "center", fontSize: 13, color: "var(--soft)", lineHeight: 1.6 }}>
+              No activity yet.<br />Create a distribution to see it here.
+            </div>
+          ) : (
+            notifs.map((n, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "16px 22px", borderBottom: "1px solid var(--line)", animation: `notifIn .3s ${(i * 0.06).toFixed(2)}s ease both` }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: n.dot, flexShrink: 0, marginTop: 5, animation: n.glow ? "glow 2s ease-in-out infinite" : "none" }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.4 }}>{n.title}</div>
+                  <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 4, fontFamily: "var(--font-mono)" }}>{n.time}</div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </>

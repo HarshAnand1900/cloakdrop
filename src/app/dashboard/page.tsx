@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useRouter } from "next/navigation";
+import type { Hex, Address } from "viem";
+import { createConfidentialAirdropClient } from "@tokenops/sdk/fhe-airdrop";
+import { humanizeError } from "@/components/Faucet";
 import { AppShell } from "@/components/AppShell";
 import { CanvasBackground } from "@/components/CanvasBackground";
 import { DistributionDetail } from "@/components/DistributionDetail";
@@ -15,25 +18,56 @@ import type { Campaign } from "@/lib/types";
 
 type DashTab = "records" | "explorer" | "analytics" | "settings";
 
-function RevokeModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+/** Real per-campaign claim stats, computed on-chain. */
+interface ClaimStat {
+  total: number;
+  claimed: number;
+  recipients: { recipient: string; handle: Hex; claimed: boolean }[];
+}
+
+function RevokeModal({ campaign, onDone, onCancel }: { campaign: Campaign; onDone: (hash: Hex) => void; onCancel: () => void }) {
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
+  const { address } = useAccount();
+  const [busy, setBusy] = useState(false);
+
+  async function confirm() {
+    if (!publicClient || !walletClient || !address) return;
+    setBusy(true);
+    try {
+      // Real on-chain reclaim: admin withdraws all remaining sealed tokens.
+      const client = createConfidentialAirdropClient({ publicClient, walletClient, address: campaign.airdrop as Address });
+      const hash = await client.withdraw(address);
+      await publicClient.waitForTransactionReceipt({ hash });
+      onDone(hash);
+    } catch (e) {
+      toast(humanizeError(e), { kind: "error" });
+      setBusy(false);
+    }
+  }
+
   return (
-    <>
-      <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(6,5,4,.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fd .2s ease both" }}>
-        <div onClick={e => e.stopPropagation()} style={{ width: 380, background: "var(--surface)", border: "1.5px solid rgba(200,71,43,.5)", borderRadius: 6, padding: 28, animation: "up .3s cubic-bezier(.22,.85,.2,1) both", boxShadow: "0 40px 80px rgba(0,0,0,.5)" }}>
-          <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: "var(--ink)", marginBottom: 6 }}>Revoke distribution?</div>
-          <div style={{ fontSize: 14, color: "var(--mid)", lineHeight: 1.55, marginBottom: 24 }}>Unclaimed allocations will be returned to your wallet. Recipients who already claimed are unaffected.</div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button className="s-btn" onClick={onConfirm} style={{ flex: 1, justifyContent: "center", fontSize: 14.5 }}>Confirm revoke</button>
-            <div onClick={onCancel} style={{ textAlign: "center", border: "1.5px solid var(--line)", color: "var(--mid)", padding: "13px 18px", borderRadius: 3, fontSize: 14.5, cursor: "pointer" }}>Cancel</div>
-          </div>
+    <div onClick={busy ? undefined : onCancel} style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(6,5,4,.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fd .2s ease both" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 400, background: "var(--surface)", border: "1.5px solid rgba(200,71,43,.5)", borderRadius: 6, padding: 28, animation: "up .3s cubic-bezier(.22,.85,.2,1) both", boxShadow: "0 40px 80px rgba(0,0,0,.5)" }}>
+        <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: "var(--ink)", marginBottom: 6 }}>Revoke distribution?</div>
+        <div style={{ fontSize: 13.5, color: "var(--mid)", lineHeight: 1.55, marginBottom: 8 }}>
+          This calls <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>withdraw()</span> on <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{shortAddr(campaign.airdrop)}</span> — all <strong style={{ color: "var(--ink)" }}>unclaimed</strong> sealed tokens return to your wallet.
+        </div>
+        <div style={{ fontSize: 13, color: "var(--mid)", lineHeight: 1.55, marginBottom: 24 }}>Recipients who already claimed are unaffected. Admin-only — requires a wallet signature.</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="s-btn" onClick={confirm} disabled={busy} style={{ flex: 1, justifyContent: "center", fontSize: 14.5, opacity: busy ? 0.6 : 1 }}>
+            {busy ? "Revoking…" : "Confirm revoke"}
+          </button>
+          <button onClick={onCancel} disabled={busy} style={{ textAlign: "center", border: "1.5px solid var(--line)", color: "var(--mid)", padding: "13px 18px", borderRadius: 3, fontSize: 14.5, cursor: "pointer", background: "none" }}>Cancel</button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
 export default function DashboardPage() {
   const { isConnected, address } = useAccount();
+  const publicClient = usePublicClient();
   const { openConnectModal } = useConnectModal();
   const router = useRouter();
   useSotto(); // dark mode context
@@ -41,7 +75,10 @@ export default function DashboardPage() {
   const [dashTab, setDashTab] = useState<DashTab>("records");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showRevoke, setShowRevoke] = useState(false);
+  const [stats, setStats] = useState<Record<string, ClaimStat>>({});
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [revokeCampaign, setRevokeCampaign] = useState<Campaign | null>(null);
+  const [revokedSet, setRevokedSet] = useState<Set<string>>(new Set());
   const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null);
   const [search, setSearch] = useState("");
   const [recFilter, setRecFilter] = useState<"all" | "sealed" | "revoked">("all");
@@ -52,6 +89,7 @@ export default function DashboardPage() {
   const [webhookSaved, setWebhookSaved] = useState(false);
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [auditExporting, setAuditExporting] = useState(false);
+  const [receipt, setReceipt] = useState<{ blockNumber: string; gasUsed: string; status: string } | null>(null);
 
   useEffect(() => {
     if (!isConnected || !address) return;
@@ -68,20 +106,93 @@ export default function DashboardPage() {
       .catch(() => {});
   }, [isConnected, address]);
 
-  // Claimed fill animation
+  // Compute REAL claim stats on-chain for every campaign.
+  useEffect(() => {
+    if (!publicClient || campaigns.length === 0) {
+      if (campaigns.length === 0) setStatsLoading(false);
+      return;
+    }
+    let alive = true;
+    setStatsLoading(true);
+    (async () => {
+      const out: Record<string, ClaimStat> = {};
+      await Promise.all(
+        campaigns.map(async (c) => {
+          try {
+            const res = await fetch(`/api/campaigns?airdrop=${c.airdrop}`);
+            const data = await res.json();
+            const recs: { recipient: string; handle: Hex }[] = Array.isArray(data?.recipients) ? data.recipients : [];
+            const client = createConfidentialAirdropClient({ publicClient, address: c.airdrop as Hex });
+            const checked = await Promise.all(
+              recs.map(async (r) => {
+                try {
+                  const claimed = await client.isSignatureClaimed(r.recipient as Hex, r.handle);
+                  return { recipient: r.recipient, handle: r.handle, claimed: !!claimed };
+                } catch {
+                  return { recipient: r.recipient, handle: r.handle, claimed: false };
+                }
+              }),
+            );
+            out[c.airdrop.toLowerCase()] = {
+              total: recs.length || c.recipientCount,
+              claimed: checked.filter((x) => x.claimed).length,
+              recipients: checked,
+            };
+          } catch {
+            out[c.airdrop.toLowerCase()] = { total: c.recipientCount, claimed: 0, recipients: [] };
+          }
+        }),
+      );
+      if (alive) { setStats(out); setStatsLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [publicClient, campaigns]);
+
+  // Fetch the REAL receipt for the latest tx when the explorer tab opens.
+  useEffect(() => {
+    if (dashTab !== "explorer" || !publicClient || !campaigns[0]) return;
+    let alive = true;
+    setReceipt(null);
+    (async () => {
+      try {
+        const r = await publicClient.getTransactionReceipt({ hash: campaigns[0].txHash as Hex });
+        if (alive) setReceipt({ blockNumber: r.blockNumber.toString(), gasUsed: r.gasUsed.toString(), status: r.status });
+      } catch { /* tx may be too old to fetch receipt */ }
+    })();
+    return () => { alive = false; };
+  }, [dashTab, publicClient, campaigns]);
+
+  // Aggregate real totals
+  const totalRecipients = campaigns.reduce((a, c) => a + c.recipientCount, 0);
+  const totalClaimed = Object.values(stats).reduce((a, s) => a + s.claimed, 0);
+  const claimRate = totalRecipients > 0 ? Math.round((totalClaimed / totalRecipients) * 100) : 0;
+
+  // Animate the claimed-fill bar to the REAL claim rate.
   useEffect(() => {
     const el = document.getElementById("claimed-fill");
-    if (el) setTimeout(() => { el.style.width = "84%"; }, 200);
-  }, [dashTab]);
+    if (el) setTimeout(() => { el.style.width = `${claimRate}%`; }, 200);
+  }, [dashTab, claimRate]);
+
+  const isRevoked = (c: Campaign) => revokedSet.has(c.airdrop.toLowerCase());
+  const sealedCount = campaigns.filter(c => !isRevoked(c)).length;
+  const revokedCount = campaigns.filter(c => isRevoked(c)).length;
 
   // Filtered + sorted campaigns
   const filtered = campaigns
     .filter(c => {
+      if (recFilter === "sealed" && isRevoked(c)) return false;
+      if (recFilter === "revoked" && !isRevoked(c)) return false;
       if (!search) return true;
       return c.name.toLowerCase().includes(search.toLowerCase()) || c.airdrop.toLowerCase().includes(search.toLowerCase());
     })
     .sort((a, b) => {
       if (recSort === "recipients") return b.recipientCount - a.recipientCount;
+      if (recSort === "claimed") {
+        const ra = stats[a.airdrop.toLowerCase()]; const rb = stats[b.airdrop.toLowerCase()];
+        const pa = ra && ra.total ? ra.claimed / ra.total : 0;
+        const pb = rb && rb.total ? rb.claimed / rb.total : 0;
+        return pb - pa;
+      }
       return b.createdAt - a.createdAt; // recent by default
     });
 
@@ -115,22 +226,37 @@ export default function DashboardPage() {
     }, 1400);
   }
 
-  const chartBars = [
-    { label: "Jan", h: "38px", opacity: .48, delay: ".05s" },
-    { label: "Feb", h: "60px", opacity: .58, delay: ".12s" },
-    { label: "Mar", h: "44px", opacity: .52, delay: ".19s" },
-    { label: "Apr", h: "80px", opacity: .7, delay: ".26s" },
-    { label: "May", h: "54px", opacity: .62, delay: ".33s" },
-    { label: "Jun", h: "94px", opacity: 1, delay: ".40s" },
-  ];
-  const histoBars = [
-    { label: "< 1h", pct: 18, h: "28px" },
-    { label: "1–6h", pct: 42, h: "68px" },
-    { label: "6–24h", pct: 21, h: "34px" },
-    { label: "1–3d", pct: 12, h: "20px" },
-    { label: "3–7d", pct: 6, h: "10px" },
-    { label: "> 7d", pct: 1, h: "4px" },
-  ];
+  // REAL distributions-per-month over the last 6 months (from createdAt).
+  const chartBars = (() => {
+    const now = new Date();
+    const months: { label: string; count: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ label: d.toLocaleDateString("en-US", { month: "short" }), count: 0 });
+    }
+    campaigns.forEach((c) => {
+      const d = new Date(c.createdAt);
+      const monthsAgo = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+      if (monthsAgo >= 0 && monthsAgo < 6) months[5 - monthsAgo].count++;
+    });
+    const max = Math.max(1, ...months.map((m) => m.count));
+    return months.map((m, i) => ({
+      label: m.label,
+      count: m.count,
+      h: `${Math.max(m.count === 0 ? 2 : 14, Math.round((m.count / max) * 94))}px`,
+      opacity: m.count === 0 ? 0.25 : 0.5 + (m.count / max) * 0.5,
+      delay: `${(i * 0.07).toFixed(2)}s`,
+    }));
+  })();
+
+  // REAL per-distribution claim-rate breakdown for the analytics tab.
+  const analyticsRows = campaigns.map((c) => {
+    const st = stats[c.airdrop.toLowerCase()];
+    const rate = st && st.total > 0 ? Math.round((st.claimed / st.total) * 100) : 0;
+    return { name: c.name, claimed: st?.claimed ?? 0, total: st?.total ?? c.recipientCount, rate };
+  });
+  const fullyClaimed = analyticsRows.filter((r) => r.total > 0 && r.claimed === r.total).length;
+  const unclaimedPct = totalRecipients > 0 ? 100 - claimRate : 0;
 
   if (!isConnected) {
     return (
@@ -208,22 +334,28 @@ export default function DashboardPage() {
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Distributions</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
                   <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{campaigns.length}</div>
-                  {campaigns.length > 0 && <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", letterSpacing: ".04em" }}>▲ {Math.min(campaigns.length, 2)} this week</span>}
+                  {(() => {
+                    const weekAgo = Date.now() - 7 * 86400000;
+                    const recent = campaigns.filter(c => c.createdAt >= weekAgo).length;
+                    return recent > 0 ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", letterSpacing: ".04em" }}>▲ {recent} this week</span> : null;
+                  })()}
                 </div>
               </div>
               <div className="s-card" style={{ padding: 22 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Recipients</div>
-                <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{campaigns.reduce((a, c) => a + c.recipientCount, 0).toLocaleString()}</div>
+                <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{totalRecipients.toLocaleString()}</div>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 6 }}>across {campaigns.length} distribution{campaigns.length === 1 ? "" : "s"}</div>
               </div>
               <div className="s-card" style={{ padding: 22 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Claimed</div>
-                <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--green)", lineHeight: 1 }}>84%</div>
+                <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--green)", lineHeight: 1 }}>
+                  {statsLoading ? <span style={{ fontSize: 32, color: "var(--soft)" }}>…</span> : `${claimRate}%`}
+                </div>
                 <div style={{ marginTop: 12, height: 3, background: "var(--line)", borderRadius: 2, overflow: "hidden" }}>
                   <div id="claimed-fill" style={{ height: "100%", width: "0%", background: "var(--green)", borderRadius: 2, transition: "width 1.2s cubic-bezier(.22,.85,.2,1)" }} />
                 </div>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 8 }}>
-                  {Math.round(campaigns.reduce((a, c) => a + c.recipientCount, 0) * 0.84)} / {campaigns.reduce((a, c) => a + c.recipientCount, 0)} recipients
+                  {statsLoading ? "checking on-chain…" : `${totalClaimed} / ${totalRecipients} recipients`}
                 </div>
               </div>
               <div style={{ background: "var(--ink)", borderRadius: 4, padding: 22, position: "relative", overflow: "hidden" }}>
@@ -251,17 +383,19 @@ export default function DashboardPage() {
             <div style={{ display: "grid", gridTemplateColumns: "1.9fr 1fr", gap: 12, marginBottom: 12 }}>
               <div className="s-card" style={{ padding: "22px 26px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 18 }}>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)" }}>Distribution volume · 6 months</div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>SEALED</div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)" }}>Distributions created · 6 months</div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>{campaigns.length} total</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 96 }}>
                   {chartBars.map(b => (
                     <div key={b.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: b.count > 0 ? "var(--ink)" : "var(--soft)" }}>{b.count > 0 ? b.count : ""}</div>
                       <div style={{ width: "100%", background: "var(--accent)", borderRadius: "2px 2px 0 0", opacity: b.opacity, height: b.h, animation: `barRise .65s ${b.delay} cubic-bezier(.22,.85,.2,1) both` }} />
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>{b.label}</span>
                     </div>
                   ))}
                 </div>
+                <div style={{ marginTop: 12, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>Count is public; amounts stay sealed.</div>
               </div>
               <div className="s-card" onClick={() => campaigns[0] && setDetailCampaign(campaigns[0])} style={{ padding: 22, position: "relative", overflow: "hidden", cursor: campaigns[0] ? "pointer" : "default" }}>
                 <div style={{ position: "absolute", top: 14, right: 16, fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".16em", color: "var(--green)", border: "1px solid var(--green)", padding: "4px 8px", borderRadius: 2, transform: "rotate(-3deg)" }}>SEALED</div>
@@ -288,16 +422,19 @@ export default function DashboardPage() {
             {/* Toolbar: filter pills + sort + search */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {(["all", "sealed", "revoked"] as const).map(f => (
-                  <div key={f} onClick={() => setRecFilter(f)} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 999, border: `1px solid ${recFilter === f ? "var(--accent)" : "var(--line)"}`, background: recFilter === f ? "rgba(200,71,43,.1)" : "transparent", color: recFilter === f ? "var(--accent)" : "var(--soft)", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".03em", cursor: "pointer", transition: "all .2s" }}>
-                    {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ opacity: .55 }}>{f === "all" ? campaigns.length : campaigns.length}</span>
-                  </div>
-                ))}
+                {(["all", "sealed", "revoked"] as const).map(f => {
+                  const n = f === "all" ? campaigns.length : f === "sealed" ? sealedCount : revokedCount;
+                  return (
+                    <div key={f} onClick={() => setRecFilter(f)} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 999, border: `1px solid ${recFilter === f ? "var(--accent)" : "var(--line)"}`, background: recFilter === f ? "rgba(200,71,43,.1)" : "transparent", color: recFilter === f ? "var(--accent)" : "var(--soft)", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".03em", cursor: "pointer", transition: "all .2s" }}>
+                      {f.charAt(0).toUpperCase() + f.slice(1)} <span style={{ opacity: .55 }}>{n}</span>
+                    </div>
+                  );
+                })}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 9, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>
                   <span style={{ letterSpacing: ".14em" }}>SORT</span>
-                  {(["recent", "recipients"] as const).map((s, i, arr) => (
+                  {(["recent", "recipients", "claimed"] as const).map((s, i, arr) => (
                     <span key={s}>
                       <span onClick={() => setRecSort(s)} style={{ cursor: "pointer", color: recSort === s ? "var(--ink)" : "var(--soft)", transition: "color .2s" }}>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
                       {i < arr.length - 1 && <span style={{ opacity: .4, margin: "0 4px" }}>·</span>}
@@ -333,7 +470,8 @@ export default function DashboardPage() {
               ) : (
                 filtered.map((c, i) => {
                   const isOpen = expandedRow === c.airdrop;
-                  const claimedPct = 84; // mock — real would need separate claim count API
+                  const st = stats[c.airdrop.toLowerCase()];
+                  const claimedPct = st && st.total > 0 ? Math.round((st.claimed / st.total) * 100) : 0;
                   return (
                     <div key={c.airdrop} style={{ borderBottom: "1px solid var(--line)", borderLeft: `${isOpen ? 3 : 0}px solid var(--accent)`, background: isOpen ? "var(--overlay)" : "transparent", transition: "background .18s, border-color .4s", animation: `rowIn .45s ${(i * 0.07).toFixed(2)}s cubic-bezier(.22,.85,.2,1) both` }}>
                       {/* Main row */}
@@ -358,7 +496,7 @@ export default function DashboardPage() {
                         <div onClick={() => setExpandedRow(isOpen ? null : c.airdrop)}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 11, marginBottom: 5 }}>
                             <span style={{ color: "var(--ink)" }}>{c.recipientCount.toLocaleString()}</span>
-                            <span style={{ color: "var(--soft)" }}>{claimedPct}%</span>
+                            <span style={{ color: "var(--soft)" }}>{statsLoading && !st ? "…" : `${claimedPct}%`}</span>
                           </div>
                           <div style={{ height: 4, background: "var(--line)", borderRadius: 2, overflow: "hidden" }}>
                             <div style={{ height: "100%", width: `${claimedPct}%`, background: "var(--green)", borderRadius: 2, transition: "width .5s" }} />
@@ -370,41 +508,56 @@ export default function DashboardPage() {
                           <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT</span>
                         </div>
 
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid rgba(111,175,142,.55)", background: "rgba(111,175,142,.1)", padding: "3px 9px", borderRadius: 999, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 5 }}>
-                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)" }} />Sealed
-                        </span>
+                        {isRevoked(c) ? (
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.5)", background: "rgba(200,71,43,.09)", padding: "3px 9px", borderRadius: 999, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)" }} />Revoked
+                          </span>
+                        ) : (
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid rgba(111,175,142,.55)", background: "rgba(111,175,142,.1)", padding: "3px 9px", borderRadius: 999, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)" }} />Sealed
+                          </span>
+                        )}
 
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                           <div onClick={() => setDetailCampaign(c)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Details</div>
-                          <div onClick={(e) => { e.stopPropagation(); setShowRevoke(true); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Revoke</div>
+                          {!isRevoked(c) && (
+                            <div onClick={(e) => { e.stopPropagation(); setRevokeCampaign(c); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Revoke</div>
+                          )}
                         </div>
                       </div>
 
-                      {/* Expandable inline drawer */}
+                      {/* Expandable inline drawer — REAL recipients + on-chain claimed status */}
                       {isOpen && (
                         <div style={{ padding: "0 22px 20px 18px", animation: "fd .25s ease both" }}>
                           <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
-                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)" }}>Sealed recipients · sample of {c.recipientCount.toLocaleString()}</div>
-                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>tx <span style={{ color: "var(--ink)" }}>{shortAddr(c.txHash, 8)}</span></div>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)" }}>
+                                Sealed recipients{st && st.recipients.length > 5 ? ` · first 5 of ${st.total}` : ""}
+                              </div>
+                              <a href={`https://sepolia.etherscan.io/tx/${c.txHash}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textDecoration: "none" }}>tx {shortAddr(c.txHash, 8)} ↗</a>
                             </div>
-                            {/* Sample rows (first few recipients ciphered) */}
-                            {[1,2,3,4].slice(0, Math.min(4, c.recipientCount)).map((_, ri) => {
-                              const claimed = ri < Math.floor(c.recipientCount * 0.84);
-                              const seed = (parseInt(c.airdrop.slice(2, 8), 16) + ri * 977) >>> 0;
-                              const addr = `0x${(seed * 131).toString(16).slice(0,4)}…${(seed * 79).toString(16).slice(0,4)}`;
-                              return (
-                                <div key={ri} style={{ display: "flex", alignItems: "center", gap: 14, padding: "8px 0", borderBottom: ri < 3 ? "1px solid var(--line)" : "none" }}>
-                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)", flex: 1 }}>{addr}</span>
-                                  <span style={{ height: 11, width: (44 + (seed % 70)) + "px", background: "var(--bar)", borderRadius: 1 }} />
-                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT</span>
-                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: claimed ? "var(--green)" : "var(--soft)", minWidth: 64, textAlign: "right" }}>{claimed ? "✓ claimed" : "pending"}</span>
+                            {!st ? (
+                              <div style={{ padding: "12px 0", display: "flex", alignItems: "center", gap: 10 }}>
+                                <div className="s-spinner" style={{ width: 14, height: 14 }} />
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>Reading claim status on-chain…</span>
+                              </div>
+                            ) : st.recipients.length === 0 ? (
+                              <div style={{ padding: "12px 0", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>No recipient records stored for this distribution.</div>
+                            ) : (
+                              st.recipients.slice(0, 5).map((r, ri, arr) => (
+                                <div key={ri} style={{ display: "flex", alignItems: "center", gap: 14, padding: "8px 0", borderBottom: ri < arr.length - 1 ? "1px solid var(--line)" : "none" }}>
+                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)", flex: 1 }}>{shortAddr(r.recipient, 6)}</span>
+                                  <span style={{ height: 11, width: (44 + (parseInt(r.recipient.slice(2, 6), 16) % 70)) + "px", background: "var(--bar)", borderRadius: 1 }} />
+                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>{c.symbol}</span>
+                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: r.claimed ? "var(--green)" : "var(--soft)", minWidth: 64, textAlign: "right" }}>{r.claimed ? "✓ claimed" : "pending"}</span>
                                 </div>
-                              );
-                            })}
+                              ))
+                            )}
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, flexWrap: "wrap", gap: 10 }}>
-                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)" }}>{Math.floor(c.recipientCount * 0.84)} / {c.recipientCount} recipients have claimed</div>
-                              <a href={`https://sepolia.etherscan.io/address/${c.airdrop}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textDecoration: "none" }}>View in block explorer →</a>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)" }}>
+                                {st ? `${st.claimed} / ${st.total} recipients have claimed` : "Checking…"}
+                              </div>
+                              <div onClick={() => setDetailCampaign(c)} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", cursor: "pointer" }}>Open full detail →</div>
                             </div>
                           </div>
                         </div>
@@ -439,13 +592,15 @@ export default function DashboardPage() {
                 </a>
               </div>
               <div style={{ padding: "24px 28px" }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 16 }}>Transaction Details</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 16 }}>Transaction Details {!receipt && campaigns[0] && <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--soft)" }}>· loading receipt…</span>}</div>
                 {[
                   ["Transaction Hash", campaigns[0] ? shortAddr(campaigns[0].txHash, 10) : "—"],
-                  ["Status", "✓ Success"],
+                  ["Status", receipt ? (receipt.status === "success" ? "✓ Success" : "✗ Reverted") : "—"],
+                  ["Block", receipt ? Number(receipt.blockNumber).toLocaleString() : "—"],
                   ["Network", "Ethereum Sepolia"],
-                  ["From", address ? shortAddr(address, 8) : "—"],
+                  ["From", campaigns[0] ? shortAddr(campaigns[0].admin, 8) : "—"],
                   ["Contract (Airdrop)", campaigns[0] ? shortAddr(campaigns[0].airdrop, 8) : "—"],
+                  ["Gas Used", receipt ? Number(receipt.gasUsed).toLocaleString() : "—"],
                   ["Created", campaigns[0] ? new Date(campaigns[0].createdAt).toLocaleString("en-GB") : "—"],
                 ].map(([label, value]) => (
                   <div key={label} style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 0, borderBottom: "1px solid var(--line)" }}>
@@ -454,31 +609,40 @@ export default function DashboardPage() {
                   </div>
                 ))}
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", margin: "16px 0 12px" }}>
-                  Input data (decoded) · <span style={{ color: "var(--accent)" }}>confidentialDisperse(bytes32,bytes[],bytes32)</span>
+                  Recipients <span style={{ color: "var(--accent)" }}>(public)</span> · amounts <span style={{ color: "var(--accent)" }}>(FHE-sealed)</span>
                 </div>
                 <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px", marginBottom: 20 }}>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", marginBottom: 10 }}>amounts (bytes[]) — <span style={{ color: "var(--accent)" }}>FHE encrypted · not decodable</span></div>
-                  {["7f3a8b2c4e9d1f…", "4e2f9a1d7b8c3e…", "a1c4f8e2b3d9a7…"].map((c, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 0" }}>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>[{i}]</span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)", wordBreak: "break-all" }}>0x{c}</span>
+                  {(stats[campaigns[0]?.airdrop?.toLowerCase() ?? ""]?.recipients ?? []).slice(0, 4).map((r, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "5px 0" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", minWidth: 26 }}>[{i}]</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--ink)", flex: 1 }}>{shortAddr(r.recipient, 8)}</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>euint64 · sealed</span>
                     </div>
                   ))}
+                  {(!campaigns[0] || (stats[campaigns[0]?.airdrop?.toLowerCase() ?? ""]?.recipients ?? []).length === 0) && (
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>
+                      {campaigns[0] ? "Reading recipients…" : "No distributions yet."}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: "var(--mid)" }}>
                   <span style={{ width: 17, height: 17, borderRadius: "50%", border: "1.5px solid var(--green)", color: "var(--green)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, flexShrink: 0 }}>✓</span>
-                  This is exactly what any observer sees. Amounts are sealed — only the original private key can unlock them.
+                  Addresses are public; amounts are euint64 ciphertext. Only each recipient&apos;s key decrypts their own.
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* ── ANALYTICS ── */}
+        {/* ── ANALYTICS · all values computed on-chain ── */}
         {dashTab === "analytics" && (
           <div className="anim-fd">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 12 }}>
-              {[["Median claim time", "4.2h", "var(--ink)"], ["Fastest claim", "3 min", "var(--green)"], ["Unclaimed", "16%", "var(--accent)"]].map(([label, val, c]) => (
+              {[
+                ["Overall claim rate", statsLoading ? "…" : `${claimRate}%`, "var(--green)"],
+                ["Fully claimed", statsLoading ? "…" : `${fullyClaimed}/${campaigns.length}`, "var(--ink)"],
+                ["Unclaimed", statsLoading ? "…" : `${unclaimedPct}%`, "var(--accent)"],
+              ].map(([label, val, c]) => (
                 <div key={label} className="s-card" style={{ padding: 22 }}>
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>{label}</div>
                   <div style={{ fontFamily: "var(--font-serif)", fontSize: 52, color: c, lineHeight: 1 }}>{val}</div>
@@ -486,20 +650,34 @@ export default function DashboardPage() {
               ))}
             </div>
             <div className="s-card" style={{ padding: "24px 28px" }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Time to claim · latest distribution</div>
-              <div style={{ fontSize: 13, color: "var(--mid)", marginBottom: 22 }}>How long recipients waited before claiming their sealed allocation.</div>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 14, height: 96, marginBottom: 10 }}>
-                {histoBars.map(b => (
-                  <div key={b.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>{b.pct}%</div>
-                    <div style={{ width: "100%", background: "var(--accent)", borderRadius: "2px 2px 0 0", height: b.h, animation: "barRise .6s cubic-bezier(.22,.85,.2,1) both" }} />
-                  </div>
-                ))}
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Claim rate · per distribution</div>
+              <div style={{ fontSize: 13, color: "var(--mid)", marginBottom: 22 }}>
+                Computed live from on-chain <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>isSignatureClaimed</span> reads. Individual amounts stay encrypted throughout.
               </div>
-              <div style={{ display: "flex", gap: 14, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
-                {histoBars.map(b => (
-                  <div key={b.label} style={{ flex: 1, textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>{b.label}</div>
-                ))}
+              {statsLoading ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 0" }}>
+                  <div className="s-spinner" /><span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>Reading claim status on-chain…</span>
+                </div>
+              ) : analyticsRows.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--soft)", padding: "12px 0" }}>No distributions to analyze yet.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  {analyticsRows.map((r) => (
+                    <div key={r.name}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                        <span style={{ fontFamily: "var(--font-serif)", fontSize: 17, color: "var(--ink)" }}>{r.name}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--mid)" }}>{r.claimed}/{r.total} · {r.rate}%</span>
+                      </div>
+                      <div style={{ height: 8, background: "var(--line)", borderRadius: 4, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${r.rate}%`, background: r.rate === 100 ? "var(--green)" : "linear-gradient(90deg,var(--accent),var(--green))", borderRadius: 4, transition: "width .6s cubic-bezier(.22,.85,.2,1)" }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: "var(--mid)" }}>
+                <span style={{ width: 17, height: 17, borderRadius: "50%", border: "1.5px solid var(--soft)", color: "var(--soft)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, flexShrink: 0 }}>i</span>
+                Claim counts are real on-chain reads. Amounts remain FHE ciphertext — never decoded here.
               </div>
             </div>
           </div>
@@ -561,7 +739,17 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {showRevoke && <RevokeModal onConfirm={() => { setShowRevoke(false); toast("Distribution revoked", { kind: "success" }); }} onCancel={() => setShowRevoke(false)} />}
+      {revokeCampaign && (
+        <RevokeModal
+          campaign={revokeCampaign}
+          onCancel={() => setRevokeCampaign(null)}
+          onDone={(hash) => {
+            setRevokedSet(prev => new Set(prev).add(revokeCampaign.airdrop.toLowerCase()));
+            setRevokeCampaign(null);
+            toast("Distribution revoked — unclaimed tokens returned to your wallet", { kind: "success", href: `https://sepolia.etherscan.io/tx/${hash}`, hrefLabel: "View tx ↗" });
+          }}
+        />
+      )}
       {detailCampaign && <DistributionDetail campaign={detailCampaign} onClose={() => setDetailCampaign(null)} />}
     </>
   );

@@ -129,23 +129,43 @@ export default function DistributePage() {
   }
 
   // ENS resolver (mock UI — real ENS requires mainnet)
-  function resolveENS() {
+  async function resolveENS() {
     setEnsResolving(true);
-    setTimeout(() => {
-      const resolved = rawList.split("\n").map(line => {
-        const t = line.trim();
-        if (/\.eth/i.test(t)) {
-          const parts = t.split(",").map(s => s.trim());
-          const name = parts[0], amt = parts[1] || "";
-          const hash = name.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-          const addr = "0x" + Array.from({ length: 40 }, (_, i2) => "0123456789abcdef"[(hash * (i2 + 3)) % 16]).join("");
-          return addr + (amt ? ", " + amt : "");
-        }
-        return t;
-      }).join("\n");
-      setRawList(resolved);
+    try {
+      // Real ENS resolution: ENS lives on mainnet, so query a mainnet client.
+      const { createPublicClient, http } = await import("viem");
+      const { mainnet } = await import("viem/chains");
+      const { normalize } = await import("viem/ens");
+      const ensClient = createPublicClient({
+        chain: mainnet,
+        transport: http("https://ethereum-rpc.publicnode.com"),
+      });
+      let unresolved = 0;
+      const lines = rawList.split("\n");
+      const resolved = await Promise.all(
+        lines.map(async (line) => {
+          const t = line.trim();
+          if (!/\.eth\b/i.test(t)) return line;
+          const parts = t.split(",").map((s) => s.trim());
+          const name = parts[0], amt = parts.slice(1).join(", ");
+          try {
+            const addr = await ensClient.getEnsAddress({ name: normalize(name) });
+            if (addr) return addr + (amt ? ", " + amt : "");
+            unresolved++;
+            return line; // leave name in place if it doesn't resolve
+          } catch {
+            unresolved++;
+            return line;
+          }
+        }),
+      );
+      setRawList(resolved.join("\n"));
+      if (unresolved > 0) toast(`${unresolved} ENS name${unresolved === 1 ? "" : "s"} could not be resolved`, { kind: "error" });
+    } catch {
+      toast("ENS resolution failed — check your connection", { kind: "error" });
+    } finally {
       setEnsResolving(false);
-    }, 1200);
+    }
   }
 
   // CSV drop
