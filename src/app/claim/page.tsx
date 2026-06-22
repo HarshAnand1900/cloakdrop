@@ -179,22 +179,53 @@ export default function ClaimPage() {
   const { openConnectModal } = useConnectModal();
   useSotto(); // dark mode applied globally
 
+  // Read ?id= param for direct claim links
+  const [preselectedId, setPreselectedId] = useState<string | null>(null);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (id) setPreselectedId(id.toLowerCase());
+  }, []);
+
   const [claimStep, setClaimStep] = useState<ClaimStep>(1);
   const [checking, setChecking] = useState(true);
   const [claims, setClaims] = useState<PublicClaim[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
-  const [claimResult, setClaimResult] = useState<{ txHash: Hex; amount: string } | null>(null);
+  const [claimResult, setClaimResult] = useState<{ txHash: Hex; amount: string; admin?: string; airdrop?: string } | null>(null);
+
+  function loadClaims(addr: string) {
+    setChecking(true);
+    setClaims([]);
+    fetch(`/api/claims?recipient=${addr}`)
+      .then(r => r.json())
+      .then(data => {
+        const all: PublicClaim[] = Array.isArray(data?.claims) ? data.claims : Array.isArray(data) ? data : [];
+        setClaims(all);
+        // Pre-select the ?id= distribution if present
+        if (preselectedId) {
+          const idx = all.findIndex(c => c.airdrop.toLowerCase() === preselectedId);
+          if (idx >= 0) { setActiveIdx(idx); setClaimStep(2); }
+        }
+      })
+      .catch(() => setClaims([]))
+      .finally(() => setChecking(false));
+  }
 
   useEffect(() => {
     if (!isConnected || !address) return;
-    setChecking(true);
-    setClaims([]);
-    fetch(`/api/claims?recipient=${address}`)
-      .then(r => r.json())
-      .then(data => { setClaims(Array.isArray(data?.claims) ? data.claims : Array.isArray(data) ? data : []); })
-      .catch(() => setClaims([]))
-      .finally(() => setChecking(false));
-  }, [isConnected, address]);
+    loadClaims(address);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, address, preselectedId]);
+
+  // Fire webhook after successful claim
+  async function fireWebhook(admin: string, airdrop: string, recipient: string) {
+    try {
+      await fetch("/api/webhook", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ admin, distribution: airdrop, recipient, token: "cUSDT" }),
+      });
+    } catch { /* webhook fire is best-effort */ }
+  }
 
   if (!isConnected) {
     return (
@@ -281,8 +312,14 @@ export default function ClaimPage() {
             <ClaimCardFull
               claim={claims[activeIdx]}
               onClaimed={(txHash, amount) => {
-                setClaimResult({ txHash, amount });
+                const c = claims[activeIdx];
+                setClaimResult({ txHash, amount, airdrop: c.airdrop });
                 setClaimStep(3);
+                // Look up admin and fire webhook
+                fetch(`/api/campaigns?airdrop=${c.airdrop}`)
+                  .then(r => r.json())
+                  .then(d => { if (d?.campaign?.admin) fireWebhook(d.campaign.admin, c.airdrop, c.recipient); })
+                  .catch(() => {});
               }}
             />
           </div>
@@ -306,7 +343,7 @@ export default function ClaimPage() {
               </a>
             </div>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 32 }}>
-              <button className="s-btn" onClick={() => { setClaimStep(1); setClaimResult(null); setChecking(true); fetch(`/api/claims?recipient=${address}`).then(r => r.json()).then(d => setClaims(Array.isArray(d?.claims) ? d.claims : Array.isArray(d) ? d : [])).finally(() => setChecking(false)); }} style={{ fontSize: 15, padding: "13px 30px" }}>
+              <button className="s-btn" onClick={() => { setClaimStep(1); setClaimResult(null); setChecking(true); if (address) loadClaims(address); }} style={{ fontSize: 15, padding: "13px 30px" }}>
                 Done
               </button>
               <div onClick={() => window.location.href = "/dashboard"} style={{ border: "1.5px solid var(--line)", color: "var(--mid)", padding: "13px 24px", borderRadius: 3, fontSize: 15, fontWeight: 500, cursor: "pointer" }}>Distributions</div>

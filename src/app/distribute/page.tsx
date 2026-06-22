@@ -23,6 +23,8 @@ import type { Campaign, ClaimRecord } from "@/lib/types";
 import { AppShell } from "@/components/AppShell";
 import { ZKCanvas } from "@/components/ZKCanvas";
 import { CanvasBackground } from "@/components/CanvasBackground";
+import { InfoTip } from "@/components/Tooltip";
+import { QRCode } from "@/components/QRCode";
 import { useSotto } from "@/context/SottoContext";
 import { toast } from "@/components/toast";
 import { humanizeError } from "@/components/Faucet";
@@ -87,6 +89,7 @@ export default function DistributePage() {
   const [showBatchPanel, setShowBatchPanel] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const [hintDismissed, setHintDismissed] = useState(false);
 
   // Load list from address book
   useEffect(() => {
@@ -310,6 +313,25 @@ export default function DistributePage() {
                 <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: 0, letterSpacing: "-.015em" }}>What kind of distribution?</h2>
                 <p style={{ fontSize: 15, color: "var(--mid)", margin: "10px 0 22px" }}>Or start from a template:</p>
 
+                {/* First-run hint */}
+                {!hintDismissed && (
+                  <div className="hint-card" style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                    <span style={{ fontSize: 20, flexShrink: 0 }}>🔒</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>How confidential distribution works</div>
+                      <div style={{ fontSize: 13, color: "var(--mid)", lineHeight: 1.6 }}>
+                        Every amount is encrypted on your device using <strong>FHE (Fully Homomorphic Encryption)</strong> before anything is sent. The blockchain stores ciphertext — numbers no one can read. Only each recipient&apos;s wallet can unlock their own allocation.
+                      </div>
+                      <div style={{ display: "flex", gap: 16, marginTop: 10, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>
+                        <span>Step 1: Configure</span>
+                        <span>→ Step 2: Upload addresses</span>
+                        <span>→ Step 3: Review & seal</span>
+                      </div>
+                    </div>
+                    <button onClick={() => setHintDismissed(true)} aria-label="Dismiss hint" style={{ background: "none", border: "none", color: "var(--soft)", cursor: "pointer", fontSize: 16, flexShrink: 0, padding: 2 }}>✕</button>
+                  </div>
+                )}
+
                 {/* Faucet */}
                 <div style={{ marginBottom: 24 }}>
                   <Faucet />
@@ -341,7 +363,9 @@ export default function DistributePage() {
                 {/* Method + Token */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, marginBottom: 24 }}>
                   <div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 11 }}>Method</div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 11, display: "flex", alignItems: "center", gap: 6 }}>
+                      Method <InfoTip text="Airdrop: recipients pull their allocation any time during the claim window. Disperse: you push to all recipients at once in a single transaction — faster, no claim step needed." />
+                    </div>
                     <div style={{ display: "flex", border: "1.5px solid var(--line)", borderRadius: 3, overflow: "hidden" }}>
                       {(["airdrop", "disperse"] as const).map(m => (
                         <div key={m} onClick={() => setMethod(m)} style={{ flex: 1, textAlign: "center", padding: 12, fontSize: 13.5, fontWeight: 600, cursor: "pointer", background: method === m ? "rgba(200,71,43,.15)" : "transparent", color: method === m ? "var(--accent)" : "var(--mid)", borderRight: m === "airdrop" ? "1px solid var(--line)" : "none", transition: "all .2s" }}>
@@ -366,7 +390,9 @@ export default function DistributePage() {
                 <div style={{ padding: "16px 18px", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 3, marginBottom: 38 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>Time lock</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>
+                        Time lock <InfoTip text="Prevents recipients from claiming before a date you set. Useful for vesting start dates or scheduled payroll. The allocation is still sealed on-chain immediately." />
+                      </div>
                       <div style={{ fontSize: 12.5, color: "var(--mid)", marginTop: 3 }}>Prevent claims before a set date</div>
                     </div>
                     <div onClick={() => setTimeLock(!timeLock)} className="s-toggle" style={{ background: timeLock ? "var(--accent)" : "var(--soft)" }}>
@@ -666,16 +692,33 @@ export default function DistributePage() {
                   {result.count} recipients · amounts sealed onchain.
                 </p>
 
-                {/* Claim link */}
-                <div style={{ maxWidth: 480, width: "100%", margin: "26px auto 0", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 4, padding: "18px 20px", textAlign: "left" }}>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Claim link · share with recipients</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
-                    <div style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)", background: "var(--input-bg)", padding: "9px 12px", borderRadius: 3, border: "1px solid var(--line)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{claimUrl}</div>
-                    <div onClick={() => { navigator.clipboard?.writeText(claimUrl); setClaimLinkCopied(true); setTimeout(() => setClaimLinkCopied(false), 2000); }} style={{ background: "var(--ink)", color: "var(--page-bg)", padding: "9px 14px", borderRadius: 3, fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
-                      {claimLinkCopied ? "✓ Copied" : "Copy"}
+                {/* Claim link — per-distribution deep link */}
+                {(() => {
+                  const deepLink = result.airdrop
+                    ? `${typeof window !== "undefined" ? window.location.origin : ""}/claim?id=${result.airdrop}`
+                    : claimUrl;
+                  return (
+                    <div style={{ maxWidth: 480, width: "100%", margin: "26px auto 0", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 4, padding: "18px 20px", textAlign: "left" }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Claim link · share with recipients</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+                        <div style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)", background: "var(--input-bg)", padding: "9px 12px", borderRadius: 3, border: "1px solid var(--line)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deepLink}</div>
+                        <button
+                          aria-label="Copy claim link"
+                          onClick={() => { navigator.clipboard?.writeText(deepLink); setClaimLinkCopied(true); setTimeout(() => setClaimLinkCopied(false), 2000); }}
+                          style={{ background: "var(--ink)", color: "var(--page-bg)", padding: "9px 14px", borderRadius: 3, fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, border: "none" }}
+                        >
+                          {claimLinkCopied ? "✓ Copied" : "Copy"}
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                        <QRCode value={deepLink} size={80} />
+                        <div style={{ fontSize: 12.5, color: "var(--mid)", lineHeight: 1.55 }}>
+                          Recipients scan or click — the link opens directly on this distribution. Only their wallet decrypts their amount.
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Tx details */}
                 <div style={{ maxWidth: 480, width: "100%", margin: "14px auto 0", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 4, padding: "18px 20px", textAlign: "left" }}>

@@ -19,6 +19,30 @@ export function fromRaw(raw: bigint): string {
 /** Pretty-print a raw amount with the token symbol. */
 export function fmtToken(raw: bigint): string {
   const n = Number(fromRaw(raw));
-  const s = n.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  return `${s} ${CUSDT.symbol}`;
+  return `${fmtNum(n)} ${CUSDT.symbol}`;
+}
+
+/** Format a number with thousands separators and 2 decimal places. */
+export function fmtNum(n: number, decimals = 2): string {
+  if (isNaN(n)) return "0.00";
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+/** Compact format: 1,200 → "1.2k", 1,500,000 → "1.5M" */
+export function fmtCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+/** Relative time: "3 min ago", "2 days ago" */
+export function timeAgo(ts: number): string {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)} days ago`;
 }

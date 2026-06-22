@@ -26,18 +26,52 @@ const ibmPlexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://cloakdrop.vercel.app";
+
 export const metadata: Metadata = {
-  title: "Sotto — Confidential token distribution",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "Sotto — Confidential token distribution",
+    template: "%s · Sotto",
+  },
   description:
     "Distribute tokens to any number of recipients in a single confidential transaction. Amounts stay encrypted onchain — only each recipient can decrypt what's theirs. Built on FHE and the TokenOps SDK.",
-  keywords: ["FHE", "confidential", "ERC-7984", "TokenOps", "Zama", "airdrop", "disperse"],
+  keywords: ["FHE", "confidential", "ERC-7984", "TokenOps", "Zama", "airdrop", "disperse", "crypto", "privacy"],
+  authors: [{ name: "Sotto" }],
+  openGraph: {
+    title: "Sotto — Confidential token distribution",
+    description: "Pay everyone. Publish nothing. FHE-encrypted airdrops and disperse on Ethereum.",
+    url: SITE_URL,
+    siteName: "Sotto",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Sotto — Confidential token distribution",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Sotto — Confidential token distribution",
+    description: "Pay everyone. Publish nothing. FHE-encrypted airdrops on Ethereum.",
+    images: ["/og.png"],
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <head>

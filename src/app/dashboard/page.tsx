@@ -7,9 +7,10 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { CanvasBackground } from "@/components/CanvasBackground";
 import { DistributionDetail } from "@/components/DistributionDetail";
+import { SkeletonRow, SkeletonCard } from "@/components/Skeleton";
 import { useSotto } from "@/context/SottoContext";
 import { toast } from "@/components/toast";
-import { shortAddr } from "@/lib/format";
+import { shortAddr, timeAgo } from "@/lib/format";
 import type { Campaign } from "@/lib/types";
 
 type DashTab = "records" | "explorer" | "analytics" | "settings";
@@ -42,9 +43,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showRevoke, setShowRevoke] = useState(false);
   const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null);
+  const [search, setSearch] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookSaved, setWebhookSaved] = useState(false);
   const [webhookEnabled, setWebhookEnabled] = useState(false);
+  const [webhookSaved, setWebhookSaved] = useState(false);
+  const [webhookLoading, setWebhookLoading] = useState(false);
   const [auditExporting, setAuditExporting] = useState(false);
 
   useEffect(() => {
@@ -55,6 +58,11 @@ export default function DashboardPage() {
       .then(data => setCampaigns(Array.isArray(data?.campaigns) ? data.campaigns : Array.isArray(data) ? data : []))
       .catch(() => setCampaigns([]))
       .finally(() => setLoading(false));
+    // Load saved webhook config
+    fetch(`/api/webhook?admin=${address}`)
+      .then(r => r.json())
+      .then(d => { setWebhookUrl(d.url ?? ""); setWebhookEnabled(!!d.enabled); })
+      .catch(() => {});
   }, [isConnected, address]);
 
   // Claimed fill animation
@@ -62,6 +70,22 @@ export default function DashboardPage() {
     const el = document.getElementById("claimed-fill");
     if (el) setTimeout(() => { el.style.width = "84%"; }, 200);
   }, [dashTab]);
+
+  // Filtered campaigns
+  const filtered = campaigns.filter(c =>
+    !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.airdrop.toLowerCase().includes(search.toLowerCase())
+  );
+
+  async function saveWebhook() {
+    if (!address) return;
+    setWebhookLoading(true);
+    try {
+      await fetch("/api/webhook", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ admin: address, url: webhookUrl, enabled: webhookEnabled }) });
+      setWebhookSaved(true);
+      setTimeout(() => setWebhookSaved(false), 3000);
+    } catch { toast("Failed to save webhook", { kind: "error" }); }
+    finally { setWebhookLoading(false); }
+  }
 
   function exportAudit() {
     setAuditExporting(true);
@@ -135,27 +159,49 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--line)", marginBottom: 28 }}>
+        {/* Tabs + Search */}
+        <div style={{ display: "flex", alignItems: "center", gap: 0, borderBottom: "1px solid var(--line)", marginBottom: 28 }}>
           {(["records", "explorer", "analytics", "settings"] as DashTab[]).map(tab => (
-            <div key={tab} onClick={() => setDashTab(tab)} style={{ padding: "10px 20px 12px", fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: ".08em", cursor: "pointer", color: dashTab === tab ? "var(--ink)" : "var(--mid)", borderBottom: `2.5px solid ${dashTab === tab ? "var(--accent)" : "transparent"}`, transition: "all .2s", marginBottom: -1, textTransform: "uppercase" }}>
+            <div key={tab} onClick={() => setDashTab(tab)} role="tab" aria-selected={dashTab === tab} tabIndex={0} onKeyDown={e => e.key === "Enter" && setDashTab(tab)} style={{ padding: "10px 20px 12px", fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: ".08em", cursor: "pointer", color: dashTab === tab ? "var(--ink)" : "var(--mid)", borderBottom: `2.5px solid ${dashTab === tab ? "var(--accent)" : "transparent"}`, transition: "all .2s", marginBottom: -1, textTransform: "uppercase" }}>
               {tab}
             </div>
           ))}
+          {dashTab === "records" && (
+            <div style={{ marginLeft: "auto", position: "relative", marginBottom: -1 }}>
+              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--soft)", fontSize: 13, pointerEvents: "none" }}>⌕</span>
+              <input
+                type="search"
+                className="s-search"
+                placeholder="Search distributions…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                aria-label="Search distributions"
+                style={{ width: 220, paddingLeft: 30, fontSize: 12 }}
+              />
+            </div>
+          )}
         </div>
 
         {/* ── RECORDS ── */}
         {dashTab === "records" && (
           <div className="anim-fd">
             {/* Stats row */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1.5fr", gap: 12, marginBottom: 12 }}>
+            <div className="dash-stats" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1.5fr", gap: 12, marginBottom: 12 }}>
+              {loading ? (
+                <>
+                  <SkeletonCard lines={1} />
+                  <SkeletonCard lines={1} />
+                  <SkeletonCard lines={2} />
+                </>
+              ) : (
+              <>
               <div className="s-card" style={{ padding: 22 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Distributions</div>
-                <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{loading ? "…" : campaigns.length}</div>
+                <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{campaigns.length}</div>
               </div>
               <div className="s-card" style={{ padding: 22 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Recipients</div>
-                <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{loading ? "…" : campaigns.reduce((a, c) => a + c.recipientCount, 0).toLocaleString()}</div>
+                <div style={{ fontFamily: "var(--font-serif)", fontSize: 56, color: "var(--ink)", lineHeight: 1 }}>{campaigns.reduce((a, c) => a + c.recipientCount, 0).toLocaleString()}</div>
               </div>
               <div className="s-card" style={{ padding: 22 }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Claimed</div>
@@ -175,6 +221,8 @@ export default function DashboardPage() {
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--page-bg)", opacity: .38 }}>Ciphertext · not a display mask</div>
                 </div>
               </div>
+              </>
+              )}
             </div>
 
             {/* Chart + latest */}
@@ -221,15 +269,23 @@ export default function DashboardPage() {
                 <span>Distribution</span><span>Date</span><span>Recipients</span><span>Total</span><span>Status</span><span>Actions</span>
               </div>
               {loading ? (
-                <div style={{ padding: "32px", textAlign: "center", color: "var(--soft)" }}>Loading…</div>
-              ) : campaigns.length === 0 ? (
+                <>
+                  <SkeletonRow /><SkeletonRow /><SkeletonRow />
+                </>
+              ) : filtered.length === 0 ? (
                 <div style={{ padding: "32px", textAlign: "center" }}>
-                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: "var(--ink)", marginBottom: 8 }}>No distributions yet</div>
-                  <div style={{ fontSize: 13, color: "var(--mid)", marginBottom: 20 }}>Create your first confidential distribution to get started.</div>
-                  <button className="s-btn" onClick={() => router.push("/distribute")} style={{ fontSize: 13.5 }}>+ New distribution</button>
+                  {campaigns.length === 0 ? (
+                    <>
+                      <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: "var(--ink)", marginBottom: 8 }}>No distributions yet</div>
+                      <div style={{ fontSize: 13, color: "var(--mid)", marginBottom: 20 }}>Create your first confidential distribution to get started.</div>
+                      <button className="s-btn" onClick={() => router.push("/distribute")} style={{ fontSize: 13.5 }}>+ New distribution</button>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 13, color: "var(--soft)" }}>No distributions match &ldquo;{search}&rdquo;</div>
+                  )}
                 </div>
               ) : (
-                campaigns.map((c, i) => (
+                filtered.map((c, i) => (
                   <div
                     key={c.airdrop}
                     onClick={() => setDetailCampaign(c)}
@@ -243,7 +299,7 @@ export default function DashboardPage() {
                         <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 2 }}>{c.symbol} · {shortAddr(c.airdrop)}</div>
                       </div>
                     </div>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{new Date(c.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{timeAgo(c.createdAt)}</span>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{c.recipientCount}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ height: 10, width: 60, background: "var(--bar)", borderRadius: 1 }} />
@@ -271,19 +327,23 @@ export default function DashboardPage() {
                 <div style={{ display: "flex", gap: 6 }}>
                   {["#ff5f56", "#febc2e", "#28c840"].map(c => <div key={c} style={{ width: 11, height: 11, borderRadius: "50%", background: c }} />)}
                 </div>
-                <div style={{ flex: 1, background: "var(--input-bg)", border: "1px solid var(--line)", borderRadius: 3, padding: "5px 12px", fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--mid)" }}>
-                  sepolia.etherscan.io/address/{campaigns[0] ? shortAddr(campaigns[0].airdrop, 8) : "…"}
-                </div>
+                <a
+                  href={campaigns[0] ? `https://sepolia.etherscan.io/tx/${campaigns[0].txHash}` : "#"}
+                  target="_blank" rel="noreferrer"
+                  style={{ flex: 1, background: "var(--input-bg)", border: "1px solid var(--line)", borderRadius: 3, padding: "5px 12px", fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--accent)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
+                  sepolia.etherscan.io/tx/{campaigns[0] ? shortAddr(campaigns[0].txHash, 12) : "…"}
+                </a>
               </div>
               <div style={{ padding: "24px 28px" }}>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 16 }}>Transaction Details</div>
                 {[
                   ["Transaction Hash", campaigns[0] ? shortAddr(campaigns[0].txHash, 10) : "—"],
                   ["Status", "✓ Success"],
-                  ["Block", "7,293,841"],
+                  ["Network", "Ethereum Sepolia"],
                   ["From", address ? shortAddr(address, 8) : "—"],
-                  ["To", campaigns[0] ? shortAddr(campaigns[0].airdrop, 8) : "—"],
-                  ["Gas Used", "142,380"],
+                  ["Contract (Airdrop)", campaigns[0] ? shortAddr(campaigns[0].airdrop, 8) : "—"],
+                  ["Created", campaigns[0] ? new Date(campaigns[0].createdAt).toLocaleString("en-GB") : "—"],
                 ].map(([label, value]) => (
                   <div key={label} style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 0, borderBottom: "1px solid var(--line)" }}>
                     <div style={{ padding: "10px 0", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>{label}</div>
@@ -349,16 +409,35 @@ export default function DashboardPage() {
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, marginBottom: 18 }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>Webhook endpoint</div>
-                  <div style={{ fontSize: 13, color: "var(--mid)", lineHeight: 1.55, maxWidth: 460 }}>POST to your URL on each claim event. Payload is sealed — amounts never travel in plaintext.</div>
+                  <div style={{ fontSize: 13, color: "var(--mid)", lineHeight: 1.55, maxWidth: 460 }}>
+                    POST to your URL the moment a recipient claims. The <code style={{ fontFamily: "var(--font-mono)", background: "var(--overlay)", padding: "1px 5px", borderRadius: 2 }}>amount</code> field is always <code style={{ fontFamily: "var(--font-mono)", background: "var(--overlay)", padding: "1px 5px", borderRadius: 2 }}>[FHE-sealed]</code> — amounts never travel in plaintext.
+                  </div>
                 </div>
-                <div onClick={() => setWebhookEnabled(!webhookEnabled)} className="s-toggle" style={{ background: webhookEnabled ? "var(--accent)" : "var(--soft)", marginTop: 3 }}>
+                <button
+                  onClick={() => { setWebhookEnabled(e => !e); setWebhookSaved(false); }}
+                  aria-label={webhookEnabled ? "Disable webhook" : "Enable webhook"}
+                  className="s-toggle" style={{ background: webhookEnabled ? "var(--accent)" : "var(--soft)", marginTop: 3, border: "none", cursor: "pointer" }}
+                >
                   <div className="s-toggle-knob" style={{ left: webhookEnabled ? 21 : 3 }} />
-                </div>
+                </button>
               </div>
               <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
-                <input type="text" placeholder="https://api.yourapp.com/hooks/sotto" value={webhookUrl} onChange={e => { setWebhookUrl(e.target.value); setWebhookSaved(false); }} className="s-input" style={{ flex: 1 }} />
-                <button onClick={() => setWebhookSaved(true)} style={{ background: webhookSaved ? "var(--green)" : "var(--accent)", color: "#F6F1E6", padding: "10px 18px", borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", whiteSpace: "nowrap" }}>
-                  {webhookSaved ? "✓  Saved" : "Save endpoint"}
+                <input
+                  type="url"
+                  placeholder="https://api.yourapp.com/hooks/sotto"
+                  value={webhookUrl}
+                  onChange={e => { setWebhookUrl(e.target.value); setWebhookSaved(false); }}
+                  className="s-input"
+                  aria-label="Webhook URL"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  onClick={saveWebhook}
+                  disabled={webhookLoading}
+                  aria-label="Save webhook endpoint"
+                  style={{ background: webhookSaved ? "var(--green)" : "var(--accent)", color: "#F6F1E6", padding: "10px 18px", borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", whiteSpace: "nowrap", opacity: webhookLoading ? 0.6 : 1 }}
+                >
+                  {webhookLoading ? "Saving…" : webhookSaved ? "✓  Saved" : "Save endpoint"}
                 </button>
               </div>
               <div style={{ padding: "13px 16px", background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 3 }}>

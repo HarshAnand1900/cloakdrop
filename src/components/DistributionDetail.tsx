@@ -7,6 +7,7 @@ import { createConfidentialAirdropClient } from "@tokenops/sdk/fhe-airdrop";
 import type { Campaign } from "@/lib/types";
 import { shortAddr } from "@/lib/format";
 import { explorerAddr, explorerTx } from "@/lib/constants";
+import { QRCode } from "./QRCode";
 import { toast } from "./toast";
 
 interface RecipientRow {
@@ -21,7 +22,10 @@ export function DistributionDetail({ campaign, onClose }: { campaign: Campaign; 
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  const claimUrl = typeof window !== "undefined" ? `${window.location.origin}/claim` : "/claim";
+  // Per-distribution deep-link — lands recipient directly on their allocation
+  const claimUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/claim?id=${campaign.airdrop}`
+    : `/claim?id=${campaign.airdrop}`;
 
   // Fetch recipient list
   useEffect(() => {
@@ -115,12 +119,30 @@ export function DistributionDetail({ campaign, onClose }: { campaign: Campaign; 
             <Fact label="Window closes" value={new Date(campaign.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} last />
           </div>
 
-          {/* Claim link */}
+          {/* Claim link + QR */}
           <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 20px", marginBottom: 16 }}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Claim link</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <div style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)", background: "var(--input-bg)", padding: "9px 12px", borderRadius: 3, border: "1px solid var(--line)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{claimUrl}</div>
-              <div onClick={() => { navigator.clipboard?.writeText(claimUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={{ background: "var(--ink)", color: "var(--page-bg)", padding: "9px 14px", borderRadius: 3, fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>{copied ? "✓ Copied" : "Copy"}</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>
+              Claim link · share with recipients
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <div style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--mid)", background: "var(--input-bg)", padding: "9px 12px", borderRadius: 3, border: "1px solid var(--line)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{claimUrl}</div>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(claimUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                aria-label="Copy claim link"
+                style={{ background: "var(--ink)", color: "var(--page-bg)", padding: "9px 14px", borderRadius: 3, fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: "none" }}
+              >
+                {copied ? "✓ Copied" : "Copy"}
+              </button>
+            </div>
+            {/* QR code */}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+              <div style={{ flexShrink: 0 }}>
+                <QRCode value={claimUrl} size={88} />
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--mid)", lineHeight: 1.55 }}>
+                Each recipient scans or clicks to reach their sealed allocation. Only their wallet can decrypt their amount — no one else sees it.
+                <div style={{ marginTop: 8, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>Link pre-selects this distribution</div>
+              </div>
             </div>
           </div>
 
