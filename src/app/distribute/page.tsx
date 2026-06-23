@@ -184,22 +184,46 @@ export default function DistributePage() {
 
   // ── Execute ──
   const executeRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const [execStuck, setExecStuck] = useState(false);
+  const stuckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function startStuckTimer() {
+    if (stuckTimerRef.current) clearTimeout(stuckTimerRef.current);
+    setExecStuck(false);
+    stuckTimerRef.current = setTimeout(() => setExecStuck(true), 18000); // 18s
+  }
+  function clearStuckTimer() {
+    if (stuckTimerRef.current) clearTimeout(stuckTimerRef.current);
+    setExecStuck(false);
+  }
+
   const execute = useCallback(async () => {
     if (!address || !walletClient || !publicClient) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const encryptor = (zama as any).relayer;
+
+    // Guard: FHE WASM must be initialized before we can encrypt anything.
+    if (!encryptor) {
+      toast("FHE module is still initializing — wait a moment then try again", { kind: "error" });
+      nav(3);
+      return;
+    }
+
     const token = CUSDT.wrapper as Address;
 
     try {
       if (method === "airdrop") {
-        // Phase 0 — authorize funding (real wallet tx)
-        setExecPhaseIdx(0); setExecPhaseLabel("Approve authorization in your wallet…"); setExecProgress(5);
+        // Phase 0 — setOperator
+        setExecPhaseIdx(0); setExecPhaseLabel("Check MetaMask — approve authorization"); setExecProgress(5);
+        startStuckTimer();
         const opHash = await walletClient.writeContract({ address: token, abi: erc7984OperatorAbi, functionName: "setOperator", args: [TOKENOPS.airdropFactory, OPERATOR_DEADLINE] });
+        clearStuckTimer();
         setExecPhaseLabel("Confirming authorization on Sepolia…"); setExecProgress(12);
         await publicClient.waitForTransactionReceipt({ hash: opHash });
 
-        // Deploy + fund the airdrop (real wallet tx)
-        setExecPhaseLabel("Approve deploy & fund in your wallet…"); setExecProgress(18);
+        // Deploy + fund
+        setExecPhaseLabel("Check MetaMask — approve deploy & fund"); setExecProgress(18);
+        startStuckTimer();
         const factory = createConfidentialAirdropFactoryClient({ publicClient, walletClient, encryptor });
         const now = Math.floor(Date.now() / 1000);
         const endTimestamp = timeLock && lockDate
@@ -210,21 +234,22 @@ export default function DistributePage() {
           userSalt: randomSalt(),
           amount: total,
         });
-        setExecPhaseLabel("Airdrop deployed · encrypting allocations…"); setExecProgress(30);
+        clearStuckTimer();
+        setExecPhaseLabel("Deployed · now encrypting allocations in browser…"); setExecProgress(30);
 
-        // Phase 1 — encrypt + sign each allocation (real FHE + signatures)
+        // Phase 1 — FHE encrypt + sign each (no wallet needed, pure browser)
         setExecPhaseIdx(1);
         const claims: ClaimRecord[] = [];
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
-          setExecPhaseLabel(`Encrypting & signing ${i + 1} / ${rows.length} · ${shortAddr(r.recipient)}`);
+          setExecPhaseLabel(`FHE encrypting ${i + 1} / ${rows.length} · ${shortAddr(r.recipient)}`);
           setExecProgress(30 + Math.round((i + 1) / rows.length * 45));
           const enc = await encryptUint64({ encryptor, contractAddress: airdrop, userAddress: r.recipient, value: toRaw(r.amount) });
           const signature = await signClaimAuthorization({ walletClient, airdropAddress: airdrop, recipient: r.recipient, encryptedAmountHandle: enc.handle });
           claims.push({ recipient: r.recipient, handle: enc.handle, inputProof: enc.inputProof, signature, amount: toRaw(r.amount).toString() });
         }
 
-        // Phase 2 — persist campaign
+        // Phase 2 — persist
         setExecPhaseIdx(2); setExecPhaseLabel("Saving sealed campaign…"); setExecProgress(85);
         const campaign: Campaign = {
           airdrop, name: `${ucName} #${Date.now().toString().slice(-4)}`, admin: address, token, symbol: CUSDT.symbol,
@@ -233,7 +258,6 @@ export default function DistributePage() {
         const res = await fetch("/api/campaigns", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ campaign, claims }) });
         if (!res.ok) throw new Error("Failed to save campaign.");
 
-        // Phase 3 — done
         setExecPhaseIdx(3); setExecPhaseLabel("Sealed onchain ✓"); setExecProgress(100);
         setResult({ airdrop, txHash: hash, count: rows.length });
         toast("Airdrop deployed and funded", { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
@@ -241,28 +265,64 @@ export default function DistributePage() {
         nav(5);
 
       } else {
-        // Disperse — authorize (real wallet tx)
-        setExecPhaseIdx(0); setExecPhaseLabel("Approve authorization in your wallet…"); setExecProgress(8);
+        // ── Disperse ──
+        // Phase 0 — setOperator
+        setExecPhaseIdx(0); setExecPhaseLabel("Check MetaMask — approve authorization"); setExecProgress(8);
+        startStuckTimer();
         const opHash = await walletClient.writeContract({ address: token, abi: disperseOperatorAbi, functionName: "setOperator", args: [TOKENOPS.disperseSingleton, OPERATOR_DEADLINE] });
+        clearStuckTimer();
         setExecPhaseLabel("Confirming authorization on Sepolia…"); setExecProgress(22);
         await publicClient.waitForTransactionReceipt({ hash: opHash });
 
-        // Encrypt + push (real FHE batch + wallet tx)
-        setExecPhaseIdx(1); setExecPhaseLabel("Encrypting all amounts in your browser…"); setExecProgress(45);
+        // Phase 1 — FHE encrypt batch (browser) then wallet tx
+        // Note: client.disperse() does BOTH encrypt AND tx in one call.
+        // FHE encryption happens first (can take 10–30s per amount), then MetaMask pops up.
+        setExecPhaseIdx(1);
+        setExecPhaseLabel(`FHE encrypting ${rows.length} amounts in browser (no MetaMask yet)…`);
+        setExecProgress(40);
         const client = createConfidentialDisperseClient({ publicClient, walletClient, encryptor });
-        setExecPhaseLabel("Approve disperse in your wallet…"); setExecProgress(60);
+
+        // Start a timer: after ~20s of FHE, MetaMask will appear
+        let fheComplete = false;
+        const fheHintTimer = setTimeout(() => {
+          if (!fheComplete) {
+            setExecPhaseLabel("Encryption done — check MetaMask to approve disperse tx");
+            startStuckTimer();
+          }
+        }, Math.max(8000, rows.length * 5000)); // ~5s per recipient heuristic
+
         const { hash } = await client.disperse({ token, mode: "direct", recipients: rows.map(r => r.recipient), amounts: rows.map(r => toRaw(r.amount)) });
+        fheComplete = true;
+        clearTimeout(fheHintTimer);
+        clearStuckTimer();
 
         setExecPhaseIdx(2); setExecPhaseLabel("Confirming disperse on Sepolia…"); setExecProgress(80);
         await publicClient.waitForTransactionReceipt({ hash });
 
+        // Save disperse record so recipients can discover it.
+        setExecPhaseLabel("Saving activity record for recipients…"); setExecProgress(92);
+        fetch("/api/disperse", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            txHash: hash,
+            name: `${ucName} #${Date.now().toString().slice(-4)}`,
+            admin: address,
+            token,
+            symbol: CUSDT.symbol,
+            recipients: rows.map(r => r.recipient),
+            createdAt: Date.now(),
+          }),
+        }).catch(() => {}); // best-effort, don't block on failure
+
         setExecPhaseIdx(3); setExecPhaseLabel("Sealed onchain ✓"); setExecProgress(100);
         setResult({ txHash: hash, count: rows.length });
-        toast("Confidential disperse complete", { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
+        toast("Confidential disperse complete — recipients' balances updated", { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
         await new Promise(r => setTimeout(r, 700));
         nav(5);
       }
     } catch (e) {
+      clearStuckTimer();
       toast(humanizeError(e), { kind: "error" });
       nav(3);
     }
@@ -672,6 +732,15 @@ export default function DistributePage() {
                         );
                       })}
                     </div>
+                    {/* MetaMask stuck hint */}
+                    {execStuck && (
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 14px", background: "rgba(200,71,43,.08)", border: "1.5px solid rgba(200,71,43,.4)", borderRadius: 3, marginBottom: 10, animation: "fd .3s ease both" }}>
+                        <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+                        <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55 }}>
+                          <strong>MetaMask popup may be blocked.</strong> Click the MetaMask icon in your browser toolbar, or check for a pending notification. In Brave, temporarily disable shields for this site.
+                        </div>
+                      </div>
+                    )}
                     <div style={{ height: 4, background: "var(--line)", borderRadius: 2, overflow: "hidden", marginBottom: 6 }}>
                       <div style={{ height: "100%", background: "linear-gradient(90deg,var(--accent),var(--green))", width: `${execProgress}%`, transition: "width .4s linear" }} />
                     </div>

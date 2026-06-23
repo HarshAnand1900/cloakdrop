@@ -8,10 +8,11 @@ import { createConfidentialAirdropClient } from "@tokenops/sdk/fhe-airdrop";
 import { useUserDecrypt } from "@zama-fhe/react-sdk";
 import { AppShell } from "@/components/AppShell";
 import { CanvasBackground } from "@/components/CanvasBackground";
+import { BalanceCard } from "@/components/claim/BalanceCard";
 import { StepRail } from "@/components/StepRail";
 import { useSotto } from "@/context/SottoContext";
-import { fmtToken } from "@/lib/format";
-import { explorerTx } from "@/lib/constants";
+import { fmtToken, shortAddr, timeAgo } from "@/lib/format";
+import { explorerTx, CUSDT } from "@/lib/constants";
 import type { PublicClaim } from "@/lib/types";
 import { toast } from "@/components/toast";
 import { humanizeError } from "@/components/Faucet";
@@ -266,6 +267,10 @@ export default function ClaimPage() {
   const [activeIdx, setActiveIdx] = useState(0);
   const [claimResult, setClaimResult] = useState<{ txHash: Hex; amount: string } | null>(null);
 
+  // Disperse history — direct pushes this recipient received
+  const [disperses, setDisperses] = useState<{ txHash: string; name: string; symbol: string; createdAt: number }[]>([]);
+  const [disperseLoading, setDisperseLoading] = useState(true);
+
   // Step 2 inner state (lifted so step rail shows correctly)
   const [innerPhase, setInnerPhase] = useState<InnerPhase>("idle");
   const [displayAmt, setDisplayAmt] = useState("•••••••");
@@ -292,6 +297,13 @@ export default function ClaimPage() {
   useEffect(() => {
     if (!isConnected || !address) return;
     loadClaims(address);
+    // Also load direct-disperse history
+    setDisperseLoading(true);
+    fetch(`/api/disperse?recipient=${address}`)
+      .then(r => r.json())
+      .then(d => setDisperses(Array.isArray(d?.disperses) ? d.disperses : []))
+      .catch(() => setDisperses([]))
+      .finally(() => setDisperseLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, address, preselectedId]);
 
@@ -344,20 +356,66 @@ export default function ClaimPage() {
 
           {/* ── STEP 1: Verify ── */}
           {claimStep === 1 && (
-            <div style={{ textAlign: "center", animation: "up .4s cubic-bezier(.22,.85,.2,1) both" }}>
-              <div className="s-label" style={{ marginBottom: 16 }}>Claim an allocation</div>
-              <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 46, color: "var(--ink)", margin: 0, letterSpacing: "-.015em" }}>
-                {checking ? "Checking eligibility" : claims.length > 0 ? "You're on the list" : "No allocations found"}
-              </h2>
-              <p style={{ fontSize: 15.5, color: "var(--mid)", margin: "13px auto 0", maxWidth: 390, lineHeight: 1.6 }}>
-                {checking
-                  ? "Verifying membership proof…"
-                  : claims.length > 0
-                  ? `${claims.length} sealed allocation${claims.length > 1 ? "s" : ""} waiting for you.`
-                  : "No sealed distributions found for this wallet."}
-              </p>
+            <div style={{ animation: "up .4s cubic-bezier(.22,.85,.2,1) both", width: "100%", maxWidth: 620, margin: "0 auto" }}>
 
-              <div style={{ margin: "32px auto 0", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 5, padding: "26px 28px", textAlign: "left" }}>
+              {/* ── Confidential balance card (shows disperse + claimed amounts) ── */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Your {CUSDT.symbol} balance</div>
+                <BalanceCard />
+                <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 8, lineHeight: 1.55, fontStyle: "italic", fontFamily: "var(--font-serif)" }}>
+                  Includes tokens received via direct disperse. Only you can decrypt this number.
+                </div>
+              </div>
+
+              {/* ── Disperse history ── */}
+              {(disperseLoading || disperses.length > 0) && (
+                <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 20px", marginBottom: 20 }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 14 }}>
+                    Received via direct disperse
+                  </div>
+                  {disperseLoading ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div className="s-spinner" style={{ width: 14, height: 14 }} />
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>Loading…</span>
+                    </div>
+                  ) : (
+                    disperses.map((d, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: i < disperses.length - 1 ? "1px solid var(--line)" : "none", gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{d.name}</div>
+                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", marginTop: 2 }}>{timeAgo(d.createdAt)} · {d.symbol}</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid var(--green)", padding: "3px 8px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)" }} />
+                            Delivered
+                          </span>
+                          <a href={`https://sepolia.etherscan.io/tx/${d.txHash}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textDecoration: "none" }}>{shortAddr(d.txHash, 5)} ↗</a>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--mid)", lineHeight: 1.55 }}>
+                    These tokens are already in your confidential balance above — no claim step needed. Use the Reveal balance button to decrypt your total.
+                  </div>
+                </div>
+              )}
+
+              {/* ── Airdrop claim check ── */}
+              <div style={{ textAlign: "center", marginBottom: 16 }}>
+                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 40, color: "var(--ink)", margin: 0, letterSpacing: "-.015em" }}>
+                  {checking ? "Checking eligibility" : claims.length > 0 ? "You're on the list" : "No airdrop claims found"}
+                </h2>
+                <p style={{ fontSize: 15, color: "var(--mid)", margin: "10px auto 0", maxWidth: 390, lineHeight: 1.6 }}>
+                  {checking
+                    ? "Scanning sealed distributions…"
+                    : claims.length > 0
+                    ? `${claims.length} sealed allocation${claims.length > 1 ? "s" : ""} waiting to be claimed.`
+                    : "No airdrop claims for this address. Check the balance above for direct disperses."}
+                </p>
+              </div>
+
+              <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 5, padding: "26px 28px", textAlign: "left" }}>
                 {checking ? (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 17, padding: "6px 0" }}>
                     <div style={{ width: 42, height: 42, borderRadius: "50%", border: "2px solid var(--line)", borderTopColor: "var(--accent)", animation: "spin .78s linear infinite" }} />
