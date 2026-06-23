@@ -81,6 +81,10 @@ export default function DistributePage() {
   const [execProgress, setExecProgress] = useState(0);
   const [execPhaseIdx, setExecPhaseIdx] = useState(0);
   const [execPhaseLabel, setExecPhaseLabel] = useState("");
+  const [sealLog, setSealLog] = useState<Array<{ idx: number; addr: string; op: string; done: boolean }>>([]);
+
+  // Step 3 rejection state
+  const [walletRejected, setWalletRejected] = useState(false);
 
   // Step 5 result
   const [result, setResult] = useState<{ airdrop?: Address; txHash: Hex; count: number } | null>(null);
@@ -209,6 +213,8 @@ export default function DistributePage() {
       return;
     }
 
+    setWalletRejected(false);
+    setSealLog([]);
     const token = CUSDT.wrapper as Address;
 
     try {
@@ -242,10 +248,13 @@ export default function DistributePage() {
         const claims: ClaimRecord[] = [];
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
+          const shortA = shortAddr(r.recipient, 5);
+          setSealLog(prev => [...prev, { idx: i + 1, addr: shortA, op: "encrypting…", done: false }]);
           setExecPhaseLabel(`FHE encrypting ${i + 1} / ${rows.length} · ${shortAddr(r.recipient)}`);
           setExecProgress(30 + Math.round((i + 1) / rows.length * 45));
           const enc = await encryptUint64({ encryptor, contractAddress: airdrop, userAddress: r.recipient, value: toRaw(r.amount) });
           const signature = await signClaimAuthorization({ walletClient, airdropAddress: airdrop, recipient: r.recipient, encryptedAmountHandle: enc.handle });
+          setSealLog(prev => prev.map((row, j) => j === i ? { ...row, op: "sealed ✓", done: true } : row));
           claims.push({ recipient: r.recipient, handle: enc.handle, inputProof: enc.inputProof, signature, amount: toRaw(r.amount).toString() });
         }
 
@@ -323,7 +332,14 @@ export default function DistributePage() {
       }
     } catch (e) {
       clearStuckTimer();
-      toast(humanizeError(e), { kind: "error" });
+      const msg = String(e instanceof Error ? e.message : e);
+      const isRejection = /rejected|aborted|denied/i.test(msg);
+      if (isRejection) {
+        setWalletRejected(true);
+        toast("Wallet request rejected — click 'Encrypt & seal onchain' to try again.", { kind: "error" });
+      } else {
+        toast(humanizeError(e), { kind: "error" });
+      }
       nav(3);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -685,10 +701,21 @@ export default function DistributePage() {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 30, fontSize: 13, color: "var(--mid)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: walletRejected ? 12 : 30, fontSize: 13, color: "var(--mid)" }}>
                   <span style={{ width: 17, height: 17, borderRadius: "50%", border: "1.5px solid var(--green)", color: "var(--green)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, flexShrink: 0 }}>✓</span>
                   Encrypted client-side, ZK-verified before broadcast.
                 </div>
+
+                {/* Wallet rejection retry banner */}
+                {walletRejected && (
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 16px", background: "rgba(200,71,43,.08)", border: "1.5px solid rgba(200,71,43,.4)", borderRadius: 4, marginBottom: 20, animation: "fd .25s ease both" }}>
+                    <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.4 }}>↺</span>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)", marginBottom: 3 }}>Transaction rejected</div>
+                      <div style={{ fontSize: 13, color: "var(--mid)", lineHeight: 1.55 }}>You cancelled the wallet request. Everything is still here — click <strong style={{ color: "var(--ink)" }}>Encrypt &amp; seal onchain</strong> to try again. If MetaMask doesn&apos;t appear, click its icon in your browser toolbar.</div>
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
                   <div onClick={() => nav(2)} style={{ fontSize: 14, color: "var(--mid)", cursor: "pointer" }}>← Back</div>
@@ -696,9 +723,9 @@ export default function DistributePage() {
                     <div onClick={() => { sotto.addToBatch({ name: `Distribution #${Date.now().toString().slice(-4)}`, count: validCount, token: "cUSDT" }); }} style={{ padding: "14px 18px", borderRadius: 3, border: "1.5px solid var(--line)", color: "var(--mid)", cursor: "pointer", fontSize: 13.5 }}>+ Batch</div>
                     <button
                       className="s-btn"
-                      onClick={() => { nav(4); setTimeout(() => executeRef.current?.(), 50); }}
+                      onClick={() => { setWalletRejected(false); nav(4); setTimeout(() => executeRef.current?.(), 50); }}
                     >
-                      Encrypt & seal onchain
+                      {walletRejected ? "Try again →" : "Encrypt & seal onchain"}
                     </button>
                   </div>
                 </div>
@@ -741,13 +768,35 @@ export default function DistributePage() {
                         </div>
                       </div>
                     )}
-                    <div style={{ height: 4, background: "var(--line)", borderRadius: 2, overflow: "hidden", marginBottom: 6 }}>
-                      <div style={{ height: "100%", background: "linear-gradient(90deg,var(--accent),var(--green))", width: `${execProgress}%`, transition: "width .4s linear" }} />
+                    {/* Progress bar + % */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+                      <div style={{ flex: 1, height: 4, background: "var(--line)", borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{ height: "100%", background: "linear-gradient(90deg,var(--accent),var(--green))", width: `${execProgress}%`, transition: "width .4s linear" }} />
+                      </div>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--soft)", minWidth: 34, textAlign: "right" }}>{Math.round(execProgress)}%</span>
                     </div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--soft)", textAlign: "right" }}>{Math.round(execProgress)}%</div>
+
+                    {/* Operation log — shows real-time per-recipient encryption status */}
+                    {sealLog.length > 0 && (
+                      <div style={{ marginTop: 14, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 5, padding: "14px 16px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)" }}>Operation log</div>
+                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT · euint64</div>
+                        </div>
+                        <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                          {sealLog.map((row, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderBottom: i < sealLog.length - 1 ? "1px solid var(--line)" : "none", animation: "rowIn .3s ease both" }}>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", width: 22, flexShrink: 0 }}>#{row.idx}</span>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)", flex: 1 }}>{row.addr}</span>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: row.done ? "var(--green)" : "var(--accent)", minWidth: 70, textAlign: "right" }}>{row.op}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Right: crypto detail + live log */}
+                  {/* Right: crypto detail + live status */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px" }}>
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 12 }}>Cryptography</div>
@@ -763,7 +812,7 @@ export default function DistributePage() {
                       {["Encrypt", "ZK Proof", "Broadcast", "Confirm"].map((label, i) => {
                         const active = execPhaseIdx === i, done = execPhaseIdx > i;
                         return (
-                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0", opacity: active || done ? 1 : 0.4 }}>
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", opacity: active || done ? 1 : 0.4 }}>
                             <span style={{ width: 7, height: 7, borderRadius: "50%", background: done ? "var(--green)" : active ? "var(--accent)" : "var(--soft)", animation: active ? "glow 1.4s ease-in-out infinite" : "none", flexShrink: 0 }} />
                             <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: done ? "var(--green)" : active ? "var(--ink)" : "var(--soft)" }}>{label}</span>
                             {done && <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--green)" }}>done</span>}
@@ -771,8 +820,15 @@ export default function DistributePage() {
                           </div>
                         );
                       })}
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--mid)", lineHeight: 1.5 }}>
+                      <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--mid)", lineHeight: 1.5 }}>
                         {execPhaseLabel || "Preparing…"}
+                      </div>
+                    </div>
+                    {/* Privacy statement */}
+                    <div style={{ background: "var(--ink)", borderRadius: 4, padding: "14px 16px", position: "relative", overflow: "hidden" }}>
+                      <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(45deg,transparent,transparent 7px,rgba(255,255,255,.04) 7px,rgba(255,255,255,.04) 8px)" }} />
+                      <div style={{ position: "relative", fontSize: 12, lineHeight: 1.55, color: "var(--page-bg)", opacity: .82 }}>
+                        Amounts are encrypted in your browser. The chain only ever stores ciphertext — not even Sotto can read them.
                       </div>
                     </div>
                   </div>

@@ -111,10 +111,14 @@ function Spinner() {
 
 export function humanizeError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
-  if (/User rejected|denied|rejected the request/i.test(msg))
-    return "Transaction rejected in wallet.";
+  if (/User rejected|denied|rejected the request|aborted a request|user denied/i.test(msg))
+    return "Wallet request rejected — click 'Encrypt & seal onchain' to try again.";
   if (/insufficient funds/i.test(msg))
     return "Insufficient ETH for gas. Get Sepolia ETH from a faucet.";
+  if (/network.*changed|chain.*changed/i.test(msg))
+    return "Network changed mid-transaction — switch back to Sepolia and retry.";
+  if (/timeout|timed out/i.test(msg))
+    return "Request timed out — check your connection and retry.";
   // Grab the first sentence to keep toasts short.
   return msg.split("\n")[0].slice(0, 160);
 }

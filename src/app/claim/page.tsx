@@ -12,7 +12,7 @@ import { BalanceCard } from "@/components/claim/BalanceCard";
 import { StepRail } from "@/components/StepRail";
 import { useSotto } from "@/context/SottoContext";
 import { fmtToken, shortAddr, timeAgo } from "@/lib/format";
-import { explorerTx, CUSDT } from "@/lib/constants";
+import { explorerTx } from "@/lib/constants";
 import type { PublicClaim } from "@/lib/types";
 import { toast } from "@/components/toast";
 import { humanizeError } from "@/components/Faucet";
@@ -266,6 +266,7 @@ export default function ClaimPage() {
   const [claims, setClaims] = useState<PublicClaim[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [claimResult, setClaimResult] = useState<{ txHash: Hex; amount: string } | null>(null);
+  const [claimTab, setClaimTab] = useState<"all" | "disperse" | "claimed">("all");
 
   // Disperse history — direct pushes this recipient received
   const [disperses, setDisperses] = useState<{ txHash: string; name: string; symbol: string; createdAt: number }[]>([]);
@@ -347,7 +348,7 @@ export default function ClaimPage() {
       <AppShell />
       <div style={{ minHeight: "calc(100vh - 56px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", padding: "42px 20px 64px", position: "relative", animation: "fd .3s ease both" }}>
         <CanvasBackground variant={claimStep === 2 && innerPhase === "decrypting" ? "converge" : "flow"} />
-        <div style={{ position: "relative", zIndex: 2, width: "100%", maxWidth: 560 }}>
+        <div style={{ position: "relative", zIndex: 2, width: "100%", maxWidth: claimStep === 1 && !checking && claims.length > 0 ? 920 : 580, transition: "max-width .4s ease" }}>
 
           {/* Step rail */}
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 42 }}>
@@ -356,73 +357,41 @@ export default function ClaimPage() {
 
           {/* ── STEP 1: Verify ── */}
           {claimStep === 1 && (
-            <div style={{ animation: "up .4s cubic-bezier(.22,.85,.2,1) both", width: "100%", maxWidth: 620, margin: "0 auto" }}>
+            <div style={{ animation: "up .4s cubic-bezier(.22,.85,.2,1) both", width: "100%" }}>
 
-              {/* ── Confidential balance card (shows disperse + claimed amounts) ── */}
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Your {CUSDT.symbol} balance</div>
-                <BalanceCard />
-                <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 8, lineHeight: 1.55, fontStyle: "italic", fontFamily: "var(--font-serif)" }}>
-                  Includes tokens received via direct disperse. Only you can decrypt this number.
-                </div>
-              </div>
-
-              {/* ── Disperse history ── */}
-              {(disperseLoading || disperses.length > 0) && (
-                <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 20px", marginBottom: 20 }}>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 14 }}>
-                    Received via direct disperse
-                  </div>
-                  {disperseLoading ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div className="s-spinner" style={{ width: 14, height: 14 }} />
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>Loading…</span>
-                    </div>
-                  ) : (
-                    disperses.map((d, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: i < disperses.length - 1 ? "1px solid var(--line)" : "none", gap: 12 }}>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{d.name}</div>
-                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", marginTop: 2 }}>{timeAgo(d.createdAt)} · {d.symbol}</div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid var(--green)", padding: "3px 8px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5 }}>
-                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)" }} />
-                            Delivered
-                          </span>
-                          <a href={`https://sepolia.etherscan.io/tx/${d.txHash}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textDecoration: "none" }}>{shortAddr(d.txHash, 5)} ↗</a>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--mid)", lineHeight: 1.55 }}>
-                    These tokens are already in your confidential balance above — no claim step needed. Use the Reveal balance button to decrypt your total.
-                  </div>
-                </div>
-              )}
-
-              {/* ── Airdrop claim check ── */}
-              <div style={{ textAlign: "center", marginBottom: 16 }}>
-                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 40, color: "var(--ink)", margin: 0, letterSpacing: "-.015em" }}>
+              {/* Header */}
+              <div style={{ textAlign: "center", marginBottom: 26 }}>
+                <div className="s-label" style={{ marginBottom: 14 }}>Claim an allocation</div>
+                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 48, color: "var(--ink)", margin: 0, letterSpacing: "-.015em" }}>
                   {checking ? "Checking eligibility" : claims.length > 0 ? "You're on the list" : "No airdrop claims found"}
                 </h2>
-                <p style={{ fontSize: 15, color: "var(--mid)", margin: "10px auto 0", maxWidth: 390, lineHeight: 1.6 }}>
+                <p style={{ fontSize: 15.5, color: "var(--mid)", margin: "11px auto 0", maxWidth: 420, lineHeight: 1.6 }}>
                   {checking
                     ? "Scanning sealed distributions…"
                     : claims.length > 0
-                    ? `${claims.length} sealed allocation${claims.length > 1 ? "s" : ""} waiting to be claimed.`
-                    : "No airdrop claims for this address. Check the balance above for direct disperses."}
+                    ? `${claims.length} sealed allocation${claims.length > 1 ? "s" : ""} waiting. Decrypt to reveal your amount.`
+                    : "No airdrop claims for this address. Check your balance for direct disperses."}
                 </p>
               </div>
 
-              <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 5, padding: "26px 28px", textAlign: "left" }}>
-                {checking ? (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 17, padding: "6px 0" }}>
-                    <div style={{ width: 42, height: 42, borderRadius: "50%", border: "2px solid var(--line)", borderTopColor: "var(--accent)", animation: "spin .78s linear infinite" }} />
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>Verifying membership proof…</span>
-                  </div>
-                ) : claims.length > 0 ? (
-                  <div>
+              {/* Balance card — always shown */}
+              <div style={{ marginBottom: 20 }}>
+                <BalanceCard />
+              </div>
+
+              {/* Loading state */}
+              {checking && (
+                <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 5, padding: "40px 28px", display: "flex", flexDirection: "column", alignItems: "center", gap: 17 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: "50%", border: "2px solid var(--line)", borderTopColor: "var(--accent)", animation: "spin .78s linear infinite" }} />
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>Verifying membership proof…</span>
+                </div>
+              )}
+
+              {/* Eligible: 2-column layout */}
+              {!checking && claims.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: 16, alignItems: "start", marginBottom: 30 }} className="airdrop-grid">
+                  {/* LEFT: allocation card */}
+                  <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 6, padding: "24px 26px" }}>
                     {/* Multi-claim tabs */}
                     {claims.length > 1 && (
                       <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", flexWrap: "wrap" }}>
@@ -433,56 +402,216 @@ export default function ClaimPage() {
                         ))}
                       </div>
                     )}
-
-                    {/* Distribution header + ELIGIBLE badge */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                    {/* Header + badge */}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, marginBottom: 20 }}>
                       <div>
-                        <div style={{ fontFamily: "var(--font-serif)", fontSize: 23, color: "var(--ink)" }}>{activeClaim?.name || "Distribution"}</div>
-                        <div style={{ fontSize: 13, color: "var(--mid)", marginTop: 3 }}>Sealed allocation · ERC-7984</div>
+                        <div style={{ fontFamily: "var(--font-serif)", fontSize: 25, color: "var(--ink)", lineHeight: 1.1 }}>{activeClaim?.name || "Distribution"}</div>
+                        <div style={{ fontSize: 13, color: "var(--mid)", marginTop: 5 }}>Sealed allocation · confidential ERC-20</div>
                       </div>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid #6FAF8E", background: "rgba(111,175,142,.1)", padding: "5px 9px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid #6FAF8E", background: "rgba(111,175,142,.1)", padding: "5px 10px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
                         <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />
                         ELIGIBLE
                       </span>
                     </div>
-
                     {/* Facts grid */}
                     {activeClaim && (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "var(--line)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 20 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "var(--line)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 20 }}>
                         {[
                           ["Token", activeClaim.symbol || "cUSDT"],
                           ["Standard", "ERC-7984"],
+                          ["Network", "Sepolia"],
                           ["Claim opens", new Date(activeClaim.startTime * 1000) < new Date() ? "Now open" : new Date(activeClaim.startTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })],
-                          ["Closes", new Date(activeClaim.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })],
+                          ["Closes", new Date(activeClaim.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })],
+                          ["Amount", "Sealed · FHE"],
                         ].map(([label, value]) => (
                           <div key={label} style={{ background: "var(--card)", padding: "11px 13px" }}>
-                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 4 }}>{label}</div>
-                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--ink)" }}>{value}</div>
+                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 4 }}>{label}</div>
+                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)" }}>{value}</div>
                           </div>
                         ))}
                       </div>
                     )}
-
+                    {/* Sealed amount teaser */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "13px 15px", border: "1px dashed var(--line)", borderRadius: 4, marginBottom: 20 }}>
+                      <div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Your amount</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ height: 16, width: 100, background: "var(--bar)", borderRadius: 2, display: "inline-block", animation: "inkbar .5s ease both" }} />
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>cUSDT</span>
+                        </div>
+                      </div>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", letterSpacing: ".08em" }}>SEALED</span>
+                    </div>
                     <button className="s-btn" style={{ width: "100%", justifyContent: "center", fontSize: 15 }} onClick={() => setClaimStep(2)}>
                       Open my sealed allocation →
                     </button>
                   </div>
-                ) : (
-                  <div style={{ textAlign: "center", padding: "8px 0" }}>
-                    <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-                    <div style={{ fontSize: 14, color: "var(--mid)", marginBottom: 12, lineHeight: 1.55 }}>
-                      No distributions found for<br />
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>{address?.slice(0, 10)}…{address?.slice(-6)}</span>
-                    </div>
-                    <div style={{ fontSize: 13, color: "var(--soft)", marginBottom: 18, lineHeight: 1.55 }}>Ask your distributor for the direct claim link.</div>
-                    <button onClick={() => address && loadClaims(address)} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "7px 14px", borderRadius: 2, background: "transparent", cursor: "pointer" }}>
-                      ↻ Refresh
-                    </button>
-                  </div>
-                )}
-              </div>
 
-              <p style={{ fontSize: 12, color: "var(--soft)", lineHeight: 1.55, maxWidth: 400, margin: "16px auto 0", fontStyle: "italic", fontFamily: "var(--font-serif)" }}>
+                  {/* RIGHT: next steps + privacy guarantees */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 6, padding: "20px 22px" }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 16 }}>What happens next</div>
+                      {[
+                        { n: "01", title: "Decrypt in browser", desc: "Your wallet signs to prove ownership. The ciphertext is decrypted locally — no server sees the number." },
+                        { n: "02", title: "Review breakdown", desc: "See your gross allocation and the claim window before confirming." },
+                        { n: "03", title: "Claim to wallet", desc: "A single tx moves your sealed amount into your confidential cUSDT balance." },
+                      ].map(st => (
+                        <div key={st.n} style={{ display: "flex", gap: 13, paddingBottom: 15 }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", borderRadius: "50%", width: 25, height: 25, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{st.n}</span>
+                          <div>
+                            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)", marginBottom: 2 }}>{st.title}</div>
+                            <div style={{ fontSize: 12, color: "var(--mid)", lineHeight: 1.5 }}>{st.desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ background: "var(--ink)", borderRadius: 6, padding: "20px 22px", position: "relative", overflow: "hidden" }}>
+                      <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(45deg,transparent,transparent 7px,rgba(255,255,255,.04) 7px,rgba(255,255,255,.04) 8px)" }} />
+                      <div style={{ position: "relative" }}>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--page-bg)", opacity: .5, marginBottom: 14 }}>Privacy guarantees</div>
+                        {[
+                          "A ZK proof verified your membership — the list stays private.",
+                          "The amount is FHE ciphertext until you decrypt it.",
+                          "Decryption happens client-side; no server reads the value.",
+                        ].map((g, i) => (
+                          <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "5px 0" }}>
+                            <span style={{ color: "#6FAF8E", fontSize: 12, lineHeight: 1.5, flexShrink: 0 }}>✓</span>
+                            <span style={{ fontSize: 12.5, color: "var(--page-bg)", opacity: .85, lineHeight: 1.5 }}>{g}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* No claims state */}
+              {!checking && claims.length === 0 && (
+                <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 5, padding: "28px", textAlign: "center", marginBottom: 30 }}>
+                  <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+                  <div style={{ fontSize: 14, color: "var(--mid)", marginBottom: 8, lineHeight: 1.55 }}>
+                    No distributions found for<br />
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>{address?.slice(0, 10)}…{address?.slice(-6)}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--soft)", marginBottom: 18, lineHeight: 1.55 }}>Check the balance above for direct disperses, or ask your distributor for the claim link.</div>
+                  <button onClick={() => address && loadClaims(address)} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "7px 14px", borderRadius: 2, background: "transparent", cursor: "pointer" }}>
+                    ↻ Refresh
+                  </button>
+                </div>
+              )}
+
+              {/* ── Unified activity section ── */}
+              {!checking && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
+                      <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: "var(--ink)" }}>Your activity</div>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>
+                        {claims.length} to claim · {disperses.length} disperse · —
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {(["all", "disperse", "claimed"] as const).map(tab => (
+                        <div key={tab} onClick={() => setClaimTab(tab)} style={{ padding: "6px 13px", borderRadius: 999, border: `1px solid ${claimTab === tab ? "var(--ink)" : "var(--line)"}`, background: claimTab === tab ? "var(--ink)" : "transparent", color: claimTab === tab ? "var(--page-bg)" : "var(--mid)", fontFamily: "var(--font-mono)", fontSize: 11, cursor: "pointer", transition: "all .2s", textTransform: "capitalize" }}>
+                          {tab === "all" ? "All" : tab === "disperse" ? "Disperse" : "Claimed"}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Disperse info banner */}
+                  {(claimTab === "all" || claimTab === "disperse") && disperses.length > 0 && (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 15px", background: "rgba(200,71,43,.05)", border: "1px solid rgba(200,71,43,.18)", borderRadius: 5, marginBottom: 12 }}>
+                      <span style={{ width: 16, height: 16, borderRadius: "50%", border: "1.4px solid var(--accent)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontSize: 10, flexShrink: 0, marginTop: 1 }}>i</span>
+                      <span style={{ fontSize: 12.5, color: "var(--mid)", lineHeight: 1.55 }}><strong style={{ color: "var(--ink)" }}>Disperse drops arrive automatically.</strong> When a sender uses direct disperse, the sealed balance is already in your wallet — no claim step needed. Decrypt it anytime to read the amount.</span>
+                    </div>
+                  )}
+
+                  {/* Activity rows */}
+                  {(() => {
+                    const claimRows = (claimTab === "all" || claimTab === "claimed")
+                      ? claims.map((c, i) => ({
+                          kind: "claim" as const,
+                          key: `claim-${i}`,
+                          title: c.name || `Distribution ${i + 1}`,
+                          sub: `Airdrop allocation · ${shortAddr(c.airdrop, 5)}`,
+                          date: new Date(c.startTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+                          status: "pending" as const,
+                          onClick: () => { setActiveIdx(i); setClaimStep(2); },
+                        }))
+                      : [];
+                    const disperseRows = (claimTab === "all" || claimTab === "disperse")
+                      ? disperses.map((d, i) => ({
+                          kind: "disperse" as const,
+                          key: `disperse-${i}`,
+                          title: d.name,
+                          sub: `Direct disperse · sent to your wallet`,
+                          date: timeAgo(d.createdAt),
+                          status: "received" as const,
+                          href: `https://sepolia.etherscan.io/tx/${d.txHash}`,
+                        }))
+                      : [];
+                    const allRows = [...claimRows, ...disperseRows];
+
+                    if (allRows.length === 0) {
+                      return (
+                        <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 5, padding: 32, textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>
+                          Nothing here yet.
+                        </div>
+                      );
+                    }
+
+                    const statusMap = {
+                      pending: { label: "Pending", fg: "var(--accent)", bd: "rgba(200,71,43,.4)", bg: "rgba(200,71,43,.08)" },
+                      received: { label: "Received", fg: "#6FAF8E", bd: "rgba(111,175,142,.5)", bg: "rgba(111,175,142,.1)" },
+                    };
+                    const kindMap = {
+                      claim: { tag: "CLAIM", fg: "var(--soft)", bd: "var(--line)" },
+                      disperse: { tag: "DISPERSE", fg: "var(--accent)", bd: "rgba(200,71,43,.4)" },
+                    };
+
+                    return (
+                      <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 5, overflow: "hidden" }}>
+                        {allRows.map((row, i) => {
+                          const st = statusMap[row.status];
+                          const kd = kindMap[row.kind];
+                          return (
+                            <div key={row.key} onClick={row.kind === "claim" ? row.onClick : undefined} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 16, alignItems: "center", padding: "15px 20px", borderBottom: i < allRows.length - 1 ? "1px solid var(--line)" : "none", cursor: row.kind === "claim" ? "pointer" : "default", transition: "background .15s", animation: `rowIn .35s ${(i * 0.06).toFixed(2)}s ease both` }}>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", color: kd.fg, border: `1px solid ${kd.bd}`, padding: "4px 8px", borderRadius: 3 }}>{kd.tag}</span>
+                              <div>
+                                <div style={{ fontSize: 14.5, color: "var(--ink)", fontWeight: 500 }}>{row.title}</div>
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", marginTop: 3 }}>{row.sub} · {row.date}</div>
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ height: 13, width: (60 + (i * 41) % 46) + "px", background: "var(--bar)", borderRadius: 2 }} />
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 3 }}>cUSDT</div>
+                              </div>
+                              {row.kind === "claim" ? (
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: st.fg, border: `1px solid ${st.bd}`, background: st.bg, padding: "4px 9px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+                                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: st.fg }} />
+                                  {st.label}
+                                </span>
+                              ) : (
+                                <a href={(row as { href?: string }).href} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid rgba(111,175,142,.5)", background: "rgba(111,175,142,.1)", padding: "4px 9px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none", whiteSpace: "nowrap" }}>
+                                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />Received ↗
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {disperseLoading && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0" }}>
+                      <div className="s-spinner" style={{ width: 13, height: 13 }} />
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>Loading disperse history…</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <p style={{ fontSize: 12, color: "var(--soft)", lineHeight: 1.55, maxWidth: 440, margin: "16px auto 0", fontStyle: "italic", fontFamily: "var(--font-serif)", textAlign: "center" }}>
                 A zero-knowledge proof confirmed you&apos;re on the list — without exposing other recipients or their amounts.
               </p>
             </div>

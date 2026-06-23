@@ -26,6 +26,7 @@ export default function DocsPage() {
     { id: "flows", label: "The two flows" },
     { id: "privacy", label: "How privacy works" },
     { id: "claiming", label: "Claiming" },
+    { id: "webhooks", label: "Webhooks" },
     { id: "stack", label: "Stack & addresses" },
     { id: "faq", label: "FAQ" },
   ];
@@ -126,6 +127,73 @@ export default function DocsPage() {
               <li><strong style={{ color: "var(--ink)" }}>Claim to wallet</strong> — a single tx moves the sealed amount into your confidential balance.</li>
             </ol>
             <P>Distributors can share a per-distribution link (<Mono>/claim?id=0x…</Mono>) or QR code that lands the recipient directly on their allocation.</P>
+          </section>
+
+          <section id="webhooks" style={{ marginBottom: 56, scrollMarginTop: 24 }}>
+            <Label>Webhooks</Label>
+            <H>Get notified when someone claims</H>
+            <P>Sotto can POST a JSON payload to any HTTPS endpoint you control whenever a recipient claims an allocation. This lets you update your own records, trigger downstream workflows, or fire off a notification — without polling the chain.</P>
+
+            <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px", marginBottom: 18 }}>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>How to enable</div>
+              <ol style={{ fontSize: 14, color: "var(--mid)", lineHeight: 1.8, paddingLeft: 18, margin: 0 }}>
+                <li>Go to <strong style={{ color: "var(--ink)" }}>Dashboard → Settings tab</strong></li>
+                <li>Paste your endpoint URL (must start with <Mono>https://</Mono>)</li>
+                <li>Click <strong style={{ color: "var(--ink)" }}>Save endpoint</strong> — toggle enabled</li>
+              </ol>
+            </div>
+
+            <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 18 }}>
+              <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)" }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)" }}>Webhook payload — POST application/json</div>
+              </div>
+              <pre style={{ margin: 0, padding: "16px 18px", fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--ink)", lineHeight: 1.7, overflowX: "auto", background: "var(--overlay)" }}>
+{`{
+  "event": "claim",
+  "admin": "0x…",          // distributor address
+  "distribution": "0x…",   // airdrop contract address
+  "recipient": "0x…",       // who claimed
+  "token": "cUSDT",
+  "ts": 1719100800          // Unix timestamp of the claim
+}`}
+              </pre>
+            </div>
+
+            <P>The endpoint receives only the on-chain identifiers — never the decrypted amount, since that number only ever exists inside the recipient&apos;s browser. Sotto fires the webhook on a best-effort basis; implement idempotency (deduplicate on <Mono>distribution + recipient</Mono>) in your handler.</P>
+
+            <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 18 }}>
+              <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)" }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)" }}>Example handler — Node.js / Express</div>
+              </div>
+              <pre style={{ margin: 0, padding: "16px 18px", fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--ink)", lineHeight: 1.7, overflowX: "auto", background: "var(--overlay)" }}>
+{`app.post('/sotto-webhook', express.json(), (req, res) => {
+  const { event, distribution, recipient, ts } = req.body;
+  if (event !== 'claim') return res.sendStatus(200);
+
+  console.log(\`\${recipient} claimed from \${distribution}\`);
+  // update your database, send a notification, etc.
+
+  res.sendStatus(200); // must respond with 2xx
+});`}
+              </pre>
+            </div>
+
+            <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "14px 18px" }}>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 8 }}>API endpoint reference</div>
+              {[
+                ["GET /api/campaigns", "Returns all distributions created by the connected address."],
+                ["GET /api/campaigns?airdrop=0x…", "Returns a single distribution by contract address."],
+                ["GET /api/claims?recipient=0x…", "Returns all claim records for an address (used by recipients)."],
+                ["GET /api/disperse?recipient=0x…", "Returns all direct-disperse records for a recipient address."],
+                ["PUT /api/webhook", "Fires the stored webhook for the given admin. Called internally on claim."],
+                ["GET /api/webhook?admin=0x…", "Returns the stored webhook config for an admin address."],
+              ].map(([route, desc], i, arr) => (
+                <div key={route} style={{ display: "flex", gap: 14, padding: "9px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : "none", flexWrap: "wrap" }}>
+                  <Mono>{route}</Mono>
+                  <span style={{ fontSize: 13, color: "var(--mid)", lineHeight: 1.5 }}>{desc}</span>
+                </div>
+              ))}
+            </div>
           </section>
 
           <section id="stack" style={{ marginBottom: 56, scrollMarginTop: 24 }}>
