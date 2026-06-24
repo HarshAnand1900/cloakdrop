@@ -753,9 +753,10 @@ export default function DistributePage() {
                       {["Encrypt", "ZK Proof", "Broadcast", "Confirm"].map((label, i) => {
                         const active = execPhaseIdx === i, done = execPhaseIdx > i;
                         return (
-                          <div key={i} style={{ padding: "10px 12px", borderRadius: 3, background: done ? "rgba(111,175,142,.15)" : active ? "rgba(200,71,43,.12)" : "var(--card)", border: `1px solid ${done ? "rgba(111,175,142,.5)" : active ? "rgba(200,71,43,.5)" : "var(--line)"}`, transition: "all .4s" }}>
-                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", color: done ? "var(--green)" : active ? "var(--accent)" : "var(--soft)" }}>{done ? "✓" : `0${i + 1}`}</div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)", marginTop: 3 }}>{label}</div>
+                          <div key={i} style={{ padding: "11px 13px", borderRadius: 4, background: done ? "rgba(111,175,142,.1)" : active ? "rgba(200,71,43,.07)" : "var(--card)", border: `1px solid ${done ? "rgba(111,175,142,.4)" : active ? "rgba(200,71,43,.4)" : "var(--line)"}`, transition: "all .4s" }}>
+                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", color: done ? "var(--green)" : active ? "var(--accent)" : "var(--soft)" }}>0{i + 1}</div>
+                            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)", marginTop: 4 }}>{label}</div>
+                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: done ? "var(--green)" : active ? "var(--accent)" : "var(--soft)", marginTop: 4 }}>{done ? "done" : active ? "active…" : "waiting"}</div>
                           </div>
                         );
                       })}
@@ -801,7 +802,7 @@ export default function DistributePage() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px" }}>
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 12 }}>Cryptography</div>
-                      {[["Scheme", "TFHE · euint64"], ["Method", method], ["Token", "cUSDT"], ["Recipients", String(validCount)], ["Binding", "per-recipient"]].map(([k, v]) => (
+                      {[["Scheme", "TFHE-rs"], ["Type", "euint64"], ["Proof system", "Groth16"], ["Token", "cUSDT"], ["Recipients", String(validCount)], ["Network", "Sepolia"]].map(([k, v]) => (
                         <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontFamily: "var(--font-mono)", fontSize: 11.5 }}>
                           <span style={{ color: "var(--soft)" }}>{k}</span>
                           <span style={{ color: "var(--ink)" }}>{v}</span>
