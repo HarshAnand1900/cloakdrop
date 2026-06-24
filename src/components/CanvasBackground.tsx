@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-type Variant = "landing" | "flow" | "converge";
+type Variant = "landing" | "flow" | "converge" | "grid";
 
 interface Props {
   variant: Variant;
@@ -177,7 +177,45 @@ export function CanvasBackground({ variant, style }: Props) {
       }
     }
 
-    const draw = variant === "landing" ? drawLanding : variant === "converge" ? drawConverge : drawFlow;
+    // Gravity dot grid — dots warp toward the cursor and glow accent near it.
+    function drawGrid() {
+      const s = stateRef.current;
+      if (!s) return;
+      const dk = isDark();
+      const { w, h, mouse } = s;
+      s.t++;
+      ctx.clearRect(0, 0, w, h);
+      const sp = 36;
+      const numC = Math.ceil(w / sp) + 2;
+      const numR = Math.ceil(h / sp) + 2;
+      const mx = mouse.active ? mouse.x : -9999;
+      const my = mouse.active ? mouse.y : -9999;
+      const dotBase = dk ? "rgba(244,234,212," : "rgba(18,16,13,";
+      for (let ci = 0; ci < numC; ci++) {
+        for (let ri = 0; ri < numR; ri++) {
+          const bx = ci * sp - sp / 2, by = ri * sp - sp / 2;
+          const dx = mx - bx, dy = my - by;
+          const dist = Math.hypot(dx, dy);
+          const pull = Math.max(0, 1 - dist / 180);
+          const x = bx + pull * dx * 0.22, y = by + pull * dy * 0.22;
+          if (pull > 0.02) {
+            const alpha = 0.08 + pull * 0.42;
+            const r = 1.4 + pull * 2.6;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(200,71,43,${alpha.toFixed(3)})`;
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.arc(x, y, 1.4, 0, Math.PI * 2);
+            ctx.fillStyle = dotBase + "0.07)";
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    const draw = variant === "landing" ? drawLanding : variant === "converge" ? drawConverge : variant === "grid" ? drawGrid : drawFlow;
     let animating = true;
 
     function loop() {

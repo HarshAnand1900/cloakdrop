@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import type { Hex } from "viem";
+import type { Hex, Address } from "viem";
+import { parseEventLogs } from "viem";
 import { createConfidentialAirdropClient } from "@tokenops/sdk/fhe-airdrop";
 import { useUserDecrypt } from "@zama-fhe/react-sdk";
 import { AppShell } from "@/components/AppShell";
@@ -12,10 +13,60 @@ import { BalanceCard } from "@/components/claim/BalanceCard";
 import { StepRail } from "@/components/StepRail";
 import { useSotto } from "@/context/SottoContext";
 import { fmtToken, shortAddr, timeAgo } from "@/lib/format";
-import { explorerTx } from "@/lib/constants";
+import { explorerTx, CUSDT } from "@/lib/constants";
+import { wrapperAbi } from "@/lib/abi";
 import type { PublicClaim } from "@/lib/types";
 import { toast } from "@/components/toast";
 import { humanizeError } from "@/components/Faucet";
+
+/* ─── DisperseDecrypt: reveal the amount received from a direct disperse ─── */
+function DisperseDecrypt({ txHash, recipient }: { txHash: Hex; recipient: Address }) {
+  const publicClient = usePublicClient();
+  const [handle, setHandle] = useState<Hex | null>(null);
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+
+  const decrypt = useUserDecrypt(
+    { handles: handle ? [{ handle, contractAddress: CUSDT.wrapper }] : [] },
+    { enabled: !!handle },
+  );
+  const value = decrypt.data && handle ? (decrypt.data[handle] as bigint | undefined) : undefined;
+
+  async function reveal() {
+    if (!publicClient) return;
+    setStatus("loading");
+    try {
+      const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
+      const logs = parseEventLogs({ abi: wrapperAbi, eventName: "ConfidentialTransfer", logs: receipt.logs });
+      const mine = logs.find((l) => ((l.args as { to?: string }).to ?? "").toLowerCase() === recipient.toLowerCase());
+      const amt = mine ? (mine.args as { amount?: Hex }).amount : undefined;
+      if (!amt) { setStatus("error"); return; }
+      setHandle(amt); // triggers useUserDecrypt
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  if (value !== undefined) {
+    return (
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: 13.5, color: "var(--ink)" }}>
+        {fmtToken(value)} <span style={{ fontSize: 10, color: "var(--soft)" }}>cUSDT</span>
+      </span>
+    );
+  }
+  if (status === "error") {
+    return <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>reveal balance ↑</span>;
+  }
+  const busy = status === "loading" || decrypt.isFetching;
+  return (
+    <button
+      onClick={reveal}
+      disabled={busy}
+      style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", background: "rgba(200,71,43,.06)", padding: "5px 10px", borderRadius: 999, cursor: busy ? "default" : "pointer", whiteSpace: "nowrap" }}
+    >
+      {busy ? "Decrypting…" : "🔓 Decrypt amount"}
+    </button>
+  );
+}
 
 type ClaimStep = 1 | 2 | 3;
 type InnerPhase = "idle" | "decrypting" | "revealed";
@@ -257,7 +308,11 @@ function ClaimCardFull({
 export default function ClaimPage() {
   const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
+  const publicClient = usePublicClient();
   useSotto();
+
+  // On-chain claimed status per airdrop (keyed by lowercased airdrop address)
+  const [claimedMap, setClaimedMap] = useState<Record<string, boolean>>({});
 
   const [preselectedId, setPreselectedId] = useState<string | null>(null);
   useEffect(() => {
@@ -313,6 +368,23 @@ export default function ClaimPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, address, preselectedId]);
 
+  // Check on-chain claimed status for every claim so the activity feed is accurate.
+  useEffect(() => {
+    if (!publicClient || claims.length === 0) { setClaimedMap({}); return; }
+    let alive = true;
+    (async () => {
+      const out: Record<string, boolean> = {};
+      await Promise.all(claims.map(async (c) => {
+        try {
+          const client = createConfidentialAirdropClient({ publicClient, address: c.airdrop });
+          out[c.airdrop.toLowerCase()] = !!(await client.isSignatureClaimed(c.recipient, c.handle));
+        } catch { out[c.airdrop.toLowerCase()] = false; }
+      }));
+      if (alive) setClaimedMap(out);
+    })();
+    return () => { alive = false; };
+  }, [publicClient, claims]);
+
   async function fireWebhook(admin: string, airdrop: string, recipient: string) {
     try {
       await fetch("/api/webhook", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ admin, distribution: airdrop, recipient, token: "cUSDT" }) });
@@ -330,7 +402,7 @@ export default function ClaimPage() {
   if (!isConnected) {
     return (
       <>
-        <AppShell />
+        <AppShell tag="CLAIM" />
         <div style={{ minHeight: "calc(100vh - 56px)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
           <CanvasBackground variant="flow" />
           <div style={{ textAlign: "center", maxWidth: 400, padding: 40, position: "relative", zIndex: 2 }}>
@@ -350,7 +422,7 @@ export default function ClaimPage() {
 
   return (
     <>
-      <AppShell />
+      <AppShell tag="CLAIM" />
 
       {/* Live status strip — shows distribution-specific stats */}
       {activeClaim && (
@@ -381,7 +453,9 @@ export default function ClaimPage() {
       )}
 
       <div style={{ minHeight: "calc(100vh - 56px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", padding: "42px 20px 64px", position: "relative", animation: "fd .3s ease both" }}>
-        <CanvasBackground variant={claimStep === 2 && innerPhase === "decrypting" ? "converge" : "flow"} />
+        <CanvasBackground variant={claimStep === 2 && innerPhase === "decrypting" ? "converge" : "grid"} />
+        {/* Gradient drift overlay */}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,rgba(200,71,43,.06) 0%,transparent 38%,rgba(200,71,43,.03) 72%,transparent 100%)", backgroundSize: "300% 300%", animation: "gradDrift 12s ease-in-out infinite", pointerEvents: "none", zIndex: 1 }} />
         <div style={{ position: "relative", zIndex: 2, width: "100%", maxWidth: claimStep === 1 && !checking && claims.length > 0 ? 920 : 580, transition: "max-width .4s ease" }}>
 
           {/* Step rail */}
@@ -561,9 +635,15 @@ export default function ClaimPage() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 14 }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
                       <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: "var(--ink)" }}>Your activity</div>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>
-                        {claims.length} to claim · {disperses.length} disperse · —
-                      </span>
+                      {(() => {
+                        const claimedN = claims.filter(c => claimedMap[c.airdrop.toLowerCase()]).length;
+                        const pendingN = claims.length - claimedN;
+                        return (
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>
+                            {pendingN} pending · {disperses.length} disperse · {claimedN} claimed
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       {(["all", "pending", "claimed"] as const).map(tab => (
@@ -575,7 +655,7 @@ export default function ClaimPage() {
                   </div>
 
                   {/* Disperse info banner */}
-                  {(claimTab === "all" || claimTab === "pending") && disperses.length > 0 && (
+                  {claimTab === "all" && disperses.length > 0 && (
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 15px", background: "rgba(200,71,43,.05)", border: "1px solid rgba(200,71,43,.18)", borderRadius: 5, marginBottom: 12 }}>
                       <span style={{ width: 16, height: 16, borderRadius: "50%", border: "1.4px solid var(--accent)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontSize: 10, flexShrink: 0, marginTop: 1 }}>i</span>
                       <span style={{ fontSize: 12.5, color: "var(--mid)", lineHeight: 1.55 }}><strong style={{ color: "var(--ink)" }}>Disperse drops arrive automatically.</strong> When a sender uses direct disperse, the sealed balance is already in your wallet — no claim step needed. Decrypt it anytime to read the amount.</span>
@@ -584,17 +664,20 @@ export default function ClaimPage() {
 
                   {/* Activity rows */}
                   {(() => {
-                    const claimRows = (claimTab === "all" || claimTab === "pending")
-                      ? claims.map((c, i) => ({
+                    const claimRows = claims
+                      .map((c, i) => {
+                        const isClaimed = !!claimedMap[c.airdrop.toLowerCase()];
+                        return {
                           kind: "claim" as const,
                           key: `claim-${i}`,
+                          idx: i,
                           title: c.name || `Distribution ${i + 1}`,
-                          sub: `Claim available · ${shortAddr(c.airdrop, 5)}`,
+                          sub: isClaimed ? `Claimed allocation · ${shortAddr(c.airdrop, 5)}` : `Claim available · ${shortAddr(c.airdrop, 5)}`,
                           date: new Date(c.startTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-                          status: "pending" as const,
-                          onClick: () => { setActiveIdx(i); setClaimStep(2); },
-                        }))
-                      : [];
+                          status: (isClaimed ? "claimed" : "pending") as "claimed" | "pending",
+                        };
+                      })
+                      .filter(r => claimTab === "all" || (claimTab === "pending" && r.status === "pending") || (claimTab === "claimed" && r.status === "claimed"));
                     const disperseRows = (claimTab === "all")
                       ? disperses.map((d, i) => ({
                           kind: "disperse" as const,
@@ -603,7 +686,7 @@ export default function ClaimPage() {
                           sub: `Direct disperse · sent to your wallet`,
                           date: timeAgo(d.createdAt),
                           status: "received" as const,
-                          href: `https://sepolia.etherscan.io/tx/${d.txHash}`,
+                          txHash: d.txHash as Hex,
                         }))
                       : [];
                     const allRows = [...claimRows, ...disperseRows];
@@ -618,6 +701,7 @@ export default function ClaimPage() {
 
                     const statusMap = {
                       pending: { label: "Pending", fg: "var(--accent)", bd: "rgba(200,71,43,.4)", bg: "rgba(200,71,43,.08)" },
+                      claimed: { label: "Claimed", fg: "var(--soft)", bd: "var(--line)", bg: "transparent" },
                       received: { label: "Received", fg: "#6FAF8E", bd: "rgba(111,175,142,.5)", bg: "rgba(111,175,142,.1)" },
                     };
                     const kindMap = {
@@ -630,26 +714,33 @@ export default function ClaimPage() {
                         {allRows.map((row, i) => {
                           const st = statusMap[row.status];
                           const kd = kindMap[row.kind];
+                          const clickable = row.kind === "claim";
                           return (
-                            <div key={row.key} onClick={row.kind === "claim" ? row.onClick : undefined} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 16, alignItems: "center", padding: "15px 20px", borderBottom: i < allRows.length - 1 ? "1px solid var(--line)" : "none", cursor: row.kind === "claim" ? "pointer" : "default", transition: "background .15s", animation: `rowIn .35s ${(i * 0.06).toFixed(2)}s ease both` }}>
+                            <div key={row.key} onClick={clickable ? () => { setActiveIdx((row as { idx: number }).idx); setClaimStep(2); } : undefined} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 16, alignItems: "center", padding: "15px 20px", borderBottom: i < allRows.length - 1 ? "1px solid var(--line)" : "none", cursor: clickable ? "pointer" : "default", transition: "background .15s", animation: `rowIn .35s ${(i * 0.06).toFixed(2)}s ease both` }}>
                               <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", color: kd.fg, border: `1px solid ${kd.bd}`, padding: "4px 8px", borderRadius: 3 }}>{kd.tag}</span>
                               <div>
                                 <div style={{ fontSize: 14.5, color: "var(--ink)", fontWeight: 500 }}>{row.title}</div>
                                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", marginTop: 3 }}>{row.sub} · {row.date}</div>
                               </div>
                               <div style={{ textAlign: "right" }}>
-                                <div style={{ height: 13, width: (60 + (i * 41) % 46) + "px", background: "var(--bar)", borderRadius: 2 }} />
-                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 3 }}>cUSDT</div>
+                                {row.kind === "disperse" ? (
+                                  <DisperseDecrypt txHash={(row as { txHash: Hex }).txHash} recipient={address as Address} />
+                                ) : (
+                                  <>
+                                    <div style={{ height: 13, width: (60 + (i * 41) % 46) + "px", background: "var(--bar)", borderRadius: 2, marginLeft: "auto" }} />
+                                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 3 }}>cUSDT</div>
+                                  </>
+                                )}
                               </div>
-                              {row.kind === "claim" ? (
+                              {row.kind === "disperse" ? (
+                                <a href={`https://sepolia.etherscan.io/tx/${(row as { txHash: string }).txHash}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid rgba(111,175,142,.5)", background: "rgba(111,175,142,.1)", padding: "4px 9px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none", whiteSpace: "nowrap" }}>
+                                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />Received ↗
+                                </a>
+                              ) : (
                                 <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: st.fg, border: `1px solid ${st.bd}`, background: st.bg, padding: "4px 9px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
                                   <span style={{ width: 5, height: 5, borderRadius: "50%", background: st.fg }} />
                                   {st.label}
                                 </span>
-                              ) : (
-                                <a href={(row as { href?: string }).href} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid rgba(111,175,142,.5)", background: "rgba(111,175,142,.1)", padding: "4px 9px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none", whiteSpace: "nowrap" }}>
-                                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />Received ↗
-                                </a>
                               )}
                             </div>
                           );

@@ -7,7 +7,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useSotto } from "@/context/SottoContext";
 import { shortAddr, timeAgo } from "@/lib/format";
 
-export function AppShell() {
+export function AppShell({ tag }: { tag?: string } = {}) {
   const { address, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
   const { disconnect } = useDisconnect();
@@ -59,6 +59,9 @@ export function AppShell() {
           <div style={{ width: 7, height: 2, background: "var(--page-bg)", transition: "background .4s" }} />
         </div>
         <span style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: "var(--ink)", transition: "color .4s" }}>Sotto</span>
+        {tag && (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".16em", color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "3px 8px", borderRadius: 2, marginLeft: 4 }}>{tag}</span>
+        )}
       </div>
 
       {/* Nav tabs */}
