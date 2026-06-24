@@ -11,6 +11,14 @@ interface Props {
 export function ZKCanvas({ execProgress, execPhaseIdx, recipients }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef({ t: 0, raf: 0 });
+  // Refs so the animation loop always sees the latest values without re-running the effect
+  const phaseRef = useRef(execPhaseIdx);
+  const progressRef = useRef(execProgress);
+  const recipientsRef = useRef(recipients);
+
+  useEffect(() => { phaseRef.current = execPhaseIdx; }, [execPhaseIdx]);
+  useEffect(() => { progressRef.current = execProgress; }, [execProgress]);
+  useEffect(() => { recipientsRef.current = recipients; }, [recipients]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -44,12 +52,16 @@ export function ZKCanvas({ execProgress, execPhaseIdx, recipients }: Props) {
 
       const c0 = W * 0.10, c1 = W * 0.36, c2 = W * 0.62, c3 = W * 0.88;
       const nodeR = 10, centerY = H / 2;
-      const phase = execPhaseIdx;
+      // Read from refs so animation loop always gets the latest values
+      const phase = phaseRef.current;
+      const recs = recipientsRef.current;
 
-      const inCount = Math.max(Math.min(recipients.length, 6), 4);
+      const inCount = Math.max(Math.min(recs.length, 6), 4);
       const inSpacing = Math.min(32, (H - 40) / inCount);
       const inStartY = centerY - (inCount - 1) * inSpacing / 2;
       const inputNodes = Array.from({ length: inCount }, (_, i) => ({ x: c0, y: inStartY + i * inSpacing }));
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _progress = progressRef.current; // available for future progress-based drawing
       const fheNodes = [
         { x: c1, y: centerY - H * 0.12, label: "ENC" },
         { x: c1, y: centerY, label: "ZK" },
@@ -106,8 +118,8 @@ export function ZKCanvas({ execProgress, execPhaseIdx, recipients }: Props) {
         ctx.beginPath(); ctx.arc(n.x, n.y, nodeR, 0, Math.PI * 2);
         ctx.fillStyle = grd; ctx.fill();
         ctx.strokeStyle = nc(active, done); ctx.lineWidth = 1.5; ctx.stroke();
-        if (recipients[i]) {
-          const addr = recipients[i].addr;
+        if (recs[i]) {
+          const addr = recs[i].addr;
           ctx.font = `10px 'IBM Plex Mono', monospace`;
           ctx.fillStyle = nc(active, done); ctx.textAlign = "right"; ctx.textBaseline = "middle";
           ctx.fillText(addr.slice(0, 10) + "…", n.x - nodeR - 4, n.y);
@@ -162,8 +174,6 @@ export function ZKCanvas({ execProgress, execPhaseIdx, recipients }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Expose phase/progress via closure refs
-  useEffect(() => { /* execPhaseIdx + execProgress used directly in draw via closure */ }, [execProgress, execPhaseIdx]);
 
   return (
     <canvas
