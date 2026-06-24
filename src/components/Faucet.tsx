@@ -19,14 +19,17 @@ export function Faucet({ onFunded }: { onFunded?: () => void }) {
     if (!address || !walletClient || !publicClient) return;
     const amount = parseUnits(MINT_AMOUNT, CUSDT.decimals);
     try {
-      // Gas saver: only mint if the wallet doesn't already hold enough underlying.
+      // Check underlying balance — skip mint if already sufficient.
       let balance = 0n;
       try {
         balance = (await publicClient.readContract({
           address: CUSDT.underlying, abi: underlyingAbi, functionName: "balanceOf", args: [address],
         })) as bigint;
       } catch { /* assume 0 */ }
-      if (balance < amount) {
+
+      const hadEnoughUnderlying = balance >= amount;
+
+      if (!hadEnoughUnderlying) {
         setBusy("Minting test USDT…");
         const mintHash = await walletClient.writeContract({
           address: CUSDT.underlying,
@@ -35,6 +38,25 @@ export function Faucet({ onFunded }: { onFunded?: () => void }) {
           args: [address, amount],
         });
         await publicClient.waitForTransactionReceipt({ hash: mintHash });
+        balance = amount; // updated after mint
+      }
+
+      // If there's no underlying to wrap (user had none and mint was somehow skipped), bail.
+      // If user already had underlying pre-existing AND already has confidential balance, skip wrap.
+      if (hadEnoughUnderlying) {
+        // Check if they have a non-zero confidential balance handle — if so they may already be funded.
+        let confHandle = "0x" + "0".repeat(64);
+        try {
+          confHandle = (await publicClient.readContract({
+            address: CUSDT.wrapper, abi: wrapperAbi, functionName: "confidentialBalanceOf", args: [address],
+          })) as string;
+        } catch { /* assume empty */ }
+        const hasConfidentialBalance = confHandle !== "0x" + "0".repeat(64) && confHandle !== "0x0000000000000000000000000000000000000000000000000000000000000000";
+        if (hasConfidentialBalance) {
+          toast(`You already have a confidential ${CUSDT.symbol} balance. Use it or wrap more underlying if needed.`, { kind: "success" });
+          onFunded?.();
+          return;
+        }
       }
 
       // Gas saver: only approve if current allowance is insufficient.

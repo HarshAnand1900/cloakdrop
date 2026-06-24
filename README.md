@@ -1,188 +1,180 @@
-# Sotto — Confidential token distribution
+# Sotto — Confidential Token Distribution
 
-> **Pay everyone. Publish nothing.**
+> Seal payouts as FHE ciphertext. Every recipient decrypts only their own amount.
 
-Sotto distributes tokens to any number of recipients in a single confidential
-transaction. Every amount is **FHE-encrypted on-chain** — the recipient list is
-public, but the allocations are mathematically sealed ciphertext. Only each
-recipient can decrypt what's theirs.
-
-Built on [Fully Homomorphic Encryption](https://docs.zama.ai/protocol) from the
-**Zama Protocol**, the [**TokenOps SDK**](https://www.npmjs.com/package/@tokenops/sdk),
-and the **ERC-7984** confidential-token standard. Runs on **Ethereum Sepolia**
-with the official `cUSDT` token.
-
-Submission for the **Zama Developer Program — Mainnet Season 3, Special Bounty
-Track × TokenOps**.
-
-**Live:** [cloakdrop.vercel.app](https://cloakdrop.vercel.app)
-
----
-
-## The problem
-
-Every public-blockchain payment leaks *who got how much*. Payroll, cap-table
-distributions, grant payouts, and airdrops all expose sensitive amounts to anyone
-with a block explorer. "Private" tools usually just hide the number in the UI while
-storing it in plaintext on-chain — a display trick, not real privacy.
-
-Sotto makes the amount itself unreadable. It's encrypted in the sender's browser
-before it ever leaves the device, lands on-chain as an `euint64` ciphertext, and
-can only be decrypted by the wallet that owns it.
+**Live demo**: https://cloakdrop.vercel.app  
+**Network**: Ethereum Sepolia  
+**Built for**: Zama Developer Program Mainnet Season 3 · Special Bounty × TokenOps
 
 ---
 
 ## What it does
 
-Two complementary, fully confidential distribution flows:
+Sotto lets you distribute tokens to any number of recipients in a single confidential transaction. Amounts are sealed as `euint64` FHE ciphertext on-chain — no block explorer, no node, no validator can read them. Only the recipient holding the matching private key can decrypt their own allocation.
 
-### 🪂 Airdrop (claim-based)
-For large or unknown audiences. The distributor pastes/uploads `address, amount`
-rows. Each amount is **FHE-encrypted to its specific recipient** and **EIP-712
-signed**, then a confidential airdrop contract is **deployed and funded in one
-transaction** via the TokenOps factory. Recipients later connect a wallet,
-privately **decrypt** their own allocation in-browser, and **claim** when ready.
+### Two distribution modes
 
-### 📦 Disperse (direct push)
-For a known list you want to pay immediately. All amounts are encrypted in one
-batch and pushed straight into each recipient's confidential balance in a
-**single transaction** via the TokenOps disperse singleton — no claim step.
-
-### 🎯 Recipient portal
-Connect a wallet → see any waiting allocations → run a local decryption ceremony
-(signature → ACL grant → in-browser decrypt) → claim to your confidential balance.
-
-### 📊 Distributor dashboard
-Real on-chain stats: distributions, recipients, **live claim rate** (computed from
-`isSignatureClaimed` reads), per-distribution claim breakdown, an Etherscan-style
-block-explorer view of the real funding tx, expandable per-recipient claim status,
-a CSV audit export, and a real **claim webhook**.
+| Mode | SDK module | How it works |
+|------|-----------|--------------|
+| **Airdrop** | `@tokenops/sdk/fhe-airdrop` | Deploys a per-campaign clone contract. Recipients claim at their own pace using a ZK membership proof. Admin can revoke unclaimed tokens. |
+| **Disperse** | `@tokenops/sdk/fhe-disperse` | Pushes sealed amounts directly to recipient wallets in one tx via the singleton contract. No claim step required. |
 
 ---
 
-## How confidentiality works
+## TokenOps SDK usage
 
-| Step | What lands on-chain | Who can read it |
-| --- | --- | --- |
-| Encrypt allocation | `externalEuint64` ciphertext handle + KMS input proof | nobody (it's ciphertext) |
-| Sign authorization | EIP-712 `Claim(address recipient,bytes32 encryptedAmount)` | — |
-| Claim / disperse | encrypted ERC-7984 transfer | nobody sees the amount |
-| Reveal | `getClaimAmount` grants the caller ACL on the handle | **only that recipient**, via `userDecrypt` |
+```ts
+// Airdrop
+import { createConfidentialAirdropClient } from "@tokenops/sdk/fhe-airdrop";
 
-- **Encryption is bound to the recipient.** `encryptUint64` is called with
-  `userAddress = recipient`, so the KMS input proof only validates for that
-  address — an amount sealed for Alice can't be redirected to Bob.
-- **Decryption is local.** `userDecrypt` runs in the recipient's browser against
-  their wallet — no server, no third party ever sees the plaintext.
-- **Amounts are never written in plaintext, anywhere.** The dashboard's "total
-  value sealed" is deliberately shown redacted, because the app genuinely cannot
-  read it either.
+const client = createConfidentialAirdropClient({ publicClient, walletClient, address: airdropAddress });
+
+await client.createAndFundConfidentialAirdrop({ token, recipients, amounts, startTime, endTime });
+await client.claim({ encryptedInput, signature });
+await client.isSignatureClaimed(recipient, handle);
+await client.getClaimAmount({ encryptedInput, signature }); // generates ACL grant for decrypt
+await client.withdraw(adminAddress);                         // revoke unclaimed tokens
+```
+
+```ts
+// Disperse
+import { createConfidentialDisperseClient } from "@tokenops/sdk/fhe-disperse";
+
+const client = createConfidentialDisperseClient({ publicClient, walletClient });
+await client.disperse({ token: wrapperAddress, recipients, amounts });
+```
 
 ---
 
-## Tech stack
+## Technical stack
 
-- **Next.js 15.3** (App Router) · React 19 · TypeScript
-- **wagmi v2** · viem · RainbowKit · TanStack Query
-- **[`@tokenops/sdk`](https://www.npmjs.com/package/@tokenops/sdk)** — `fhe-airdrop`
-  (factory-deployed clones, EIP-712 claim auth) + `fhe-disperse` (singleton, direct push)
-- **`@zama-fhe/sdk@3`** + **`@zama-fhe/react-sdk@3`** — browser FHE encrypt + `useUserDecrypt`
-- **Upstash Redis** — stores signed claim payloads + webhook config (JSON-file fallback for local dev)
-- Custom design system (Instrument Serif / Hanken Grotesk / IBM Plex Mono), light + dark mode, canvas effects, generated OG image
+| Layer | Technology |
+|-------|-----------|
+| FHE runtime | Zama Protocol — `tfhe-rs` via `@zama-fhe/sdk` + `@zama-fhe/react-sdk` |
+| Encryption type | `euint64` — 64-bit unsigned integer sealed as ciphertext |
+| Token standard | ERC-7984 — confidential ERC-20 extension |
+| Token | `cUSDT` — official Zama mock USDT on Sepolia |
+| ZK proofs | ZKPoK — input proofs that each sealed amount is well-formed without revealing it |
+| Client-side decrypt | `useUserDecrypt` + `useConfidentialBalance` from `@zama-fhe/react-sdk` |
+| Storage | Upstash Redis — campaign records, disperse index, webhook config |
+| Frontend | Next.js 15, wagmi v2, RainbowKit, viem |
 
-### On-chain addresses (Sepolia)
+---
+
+## How amounts stay private
+
+1. Amounts are encrypted locally with `encryptUint64` before any network call — the plaintext never leaves the browser
+2. A ZK input proof (ZKPoK) is generated alongside each ciphertext, proving the value is well-formed without revealing it
+3. The sealed `euint64` is submitted in the distribution transaction — on Etherscan it appears as raw ciphertext bytes
+4. Only the recipient can decrypt: `useUserDecrypt` requests a wallet signature proving key ownership, then the Zama gateway returns the plaintext entirely client-side
+
+---
+
+## User flows
+
+### Create an airdrop (admin)
+1. Connect wallet → **New distribution**
+2. Enter a name and paste CSV: `0xAddress, amount` (one per line)
+3. Choose **Airdrop**, set claim window open/close dates
+4. Review step: pre-distribution balance guard prevents silent zero-transfers (ERC-7984 confidential transfers silently send 0 on insufficient balance — Sotto blocks this before broadcast)
+5. Seal step: `setOperator` (once per token, skipped if already set via `isOperator` check) → `createAndFundConfidentialAirdrop`
+6. Share the claim link: `cloakdrop.vercel.app/claim?id=<airdropAddress>`
+
+### Create a disperse (admin)
+1. Same flow but choose **Disperse**
+2. Single tx via disperse singleton — sealed balances land in recipient wallets immediately
+
+### Claim an allocation (recipient)
+1. Go to `/claim` → connect wallet → see eligible sealed allocations
+2. Select a distribution → **Declassify with my key**
+3. `getClaimAmount` issues an ACL grant; `useUserDecrypt` decrypts the ciphertext in-browser — amount revealed with a scramble animation
+4. **Claim to wallet** → `claim` tx moves the sealed amount into the recipient's confidential cUSDT balance
+
+### Reveal confidential balance
+The balance card on `/claim` uses `useConfidentialBalance` — reads the latest ciphertext handle and decrypts on demand, always reflecting the current on-chain balance after claims and disperses.
+
+---
+
+## Webhook integration
+
+Configure a webhook URL in **Distributions → Settings**. Sotto fires a `POST` after every successful claim:
+
+```json
+{
+  "event": "claim",
+  "distribution": "0xAirdropAddress",
+  "recipient": "0xRecipientAddress",
+  "token": "cUSDT",
+  "amount": "[FHE-sealed]",
+  "ts": "2026-06-25T10:00:00.000Z"
+}
+```
+
+Headers sent: `Content-Type: application/json`, `x-sotto-event: claim`
+
+> `amount` is always `[FHE-sealed]` — Sotto never decodes ciphertext server-side.
+
+---
+
+## Contract addresses (Sepolia)
 
 | Contract | Address |
-| --- | --- |
-| TokenOps airdrop factory | `0xbE6A3B78B36684fFee48De77d47Bc3393F5Acd4c` |
-| TokenOps disperse singleton | `0x710dD9885Cc9986EfD234E7719483147a6d8DBb4` |
+|----------|---------|
 | cUSDT wrapper (ERC-7984) | `0x4E7B06D78965594eB5EF5414c357ca21E1554491` |
-| cUSDT underlying (mint faucet) | `0xa7dA08FafDC9097Cc0E7D4f113A61e31d7e8e9b0` |
+| cUSDT underlying (mock ERC-20) | `0xa7dA08FafDC9097Cc0E7D4f113A61e31d7e8e9b0` |
+| Airdrop factory | `0xbE6A3B78B36684fFee48De77d47Bc3393F5Acd4c` |
+| Disperse singleton | `0x710dD9885Cc9986EfD234E7719483147a6d8DBb4` |
+| Zama Wrappers Registry | `0x2f0750Bbb0A246059d80e94c454586a7F27a128e` |
 | FHEVM ACL | `0xf0Ffdc93b7E186bC2f8CB3dAA75D86d1930A433D` |
 
 ---
 
-## How the flows are wired
-
-**Airdrop** (`src/app/distribute/page.tsx`)
-1. `token.setOperator(factory, deadline)` — authorize the factory to pull funds.
-2. `factory.createAndFundConfidentialAirdrop({ params, userSalt, amount })` — deploy + fund the clone in one tx.
-3. Per recipient: `encryptUint64({ encryptor, contractAddress: airdrop, userAddress: recipient, value })` then `signClaimAuthorization(...)`.
-4. `POST /api/campaigns` persists `{ campaign, claims[] }` so recipients can look themselves up.
-
-**Disperse** (same page, disperse method)
-1. `token.setOperator(singleton, deadline)`.
-2. `client.disperse({ token, mode: "direct", recipients, amounts })` — SDK encrypts the whole batch and pushes in one tx.
-
-**Claim** (`src/app/claim/page.tsx`)
-1. `GET /api/claims?recipient=` returns the caller's sealed claims.
-2. `getClaimAmount(...)` — write tx that grants the caller ACL and returns the handle.
-3. `useUserDecrypt({ handles })` — decrypts locally in-browser.
-4. `claim(...)` — pulls the tokens into the recipient's confidential balance.
-
-**Revoke** (dashboard) — `airdropClient.withdraw(admin)` sweeps all *unclaimed* sealed
-tokens back to the admin. Real, admin-only, on-chain.
-
----
-
-## What's real vs illustrative
-
-Everything in the **app** is real and on-chain:
-
-- ✅ Airdrop create + fund, disperse, claim, decrypt, revoke — real transactions
-- ✅ Dashboard stats (distributions, recipients, claim rate, per-distribution
-  breakdown, expandable recipient claim status) — computed live from
-  `isSignatureClaimed` on-chain reads
-- ✅ Block-explorer tab — real tx hash, block number, gas, and recipient list
-  (fetched via `getTransactionReceipt`)
-- ✅ Distributions-per-month chart — real, from campaign timestamps
-- ✅ Webhook — stored in Redis, actually fired on claim
-- ✅ Audit CSV, QR codes, claim deep-links, duplicate-address summing
-
-The **landing page** hero card (`Distribution #0427`) is an illustrative product
-mockup, as is standard for a marketing page. It is clearly a visual demo, not a
-functional claim.
-
----
-
-## Run locally
-
-> Requires **Node ≥ 22** (a constraint of `@zama-fhe/sdk`).
+## Running locally
 
 ```bash
+git clone https://github.com/HarshAnand1900/cloakdrop
+cd cloakdrop
 npm install
-cp .env.example .env.local   # optional — add Upstash for a persistent store
-npm run dev                  # http://localhost:3000
 ```
 
-In the app: open **New distribution → Get test cUSDT** to mint + wrap funds, create
-an airdrop or disperse, then open **Claim** from another wallet to decrypt & claim.
+Create `.env.local`:
 
-> The first load of `/distribute` takes ~60–80s — that's the one-time FHE WASM
-> compile. Subsequent loads are instant.
-
-### Environment variables
-
-| Var | Purpose | Required |
-| --- | --- | --- |
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect / RainbowKit | optional (fallback baked in) |
-| `UPSTASH_REDIS_REST_URL` | Persistent claim + webhook store | prod only |
-| `UPSTASH_REDIS_REST_TOKEN` | " | prod only |
-
-Without the Upstash vars the app uses a local JSON file (`.data/`) — fine for dev,
-but it can't write on a read-only host like Vercel, so set them in production.
-
-## Deploy (Vercel)
+```env
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
+UPSTASH_REDIS_REST_URL=https://your-db.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your_token
+```
 
 ```bash
-npx vercel --prod \
-  -e NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=<id> \
-  -e UPSTASH_REDIS_REST_URL=<url> \
-  -e UPSTASH_REDIS_REST_TOKEN=<token>
+npm run dev   # http://localhost:3000
 ```
 
-Node 22.x is selected automatically via the `engines` field. Turbopack is disabled
-(the standard webpack build handles the FHE WASM worker).
+Requires Node ≥ 22.
+
+---
+
+## Testing end-to-end
+
+1. **Get Sepolia ETH** from [sepoliafaucet.com](https://sepoliafaucet.com)
+2. **Get test cUSDT**: click **Get 100,000 test cUSDT** on any distribution page — mints underlying ERC-20 and wraps to confidential cUSDT in one flow
+3. **Test a disperse**: New distribution → paste 2–3 addresses → Disperse → Seal → check each recipient's `/claim` page
+4. **Test an airdrop**: New distribution → Airdrop → Seal → open the claim link in a second wallet → Declassify → Claim
+5. **Verify privacy**: open the deployment tx on [Sepolia Etherscan](https://sepolia.etherscan.io) — all `amount` fields appear as hex ciphertext, never plaintext
+
+---
+
+## API routes
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/campaigns` | `GET` | List campaigns by `?admin=0x…` or single by `?airdrop=0x…` |
+| `/api/campaigns` | `POST` | Save a new campaign record |
+| `/api/claims` | `GET` | Eligible claims for `?recipient=0x…` |
+| `/api/claims` | `POST` | Register a claim signature for a recipient |
+| `/api/disperse` | `GET` | Disperse records by `?admin=0x…` or `?recipient=0x…` |
+| `/api/disperse` | `POST` | Save a disperse record |
+| `/api/webhook` | `GET` / `POST` | Get or set webhook config for an admin address |
+| `/api/webhook` | `PUT` | Fire the webhook for a claim event |
 
 ---
 
@@ -191,25 +183,35 @@ Node 22.x is selected automatically via the `engines` field. Turbopack is disabl
 ```
 src/
   app/
-    page.tsx                landing
-    distribute/page.tsx     4-step wizard: configure → recipients → review → seal
-    claim/page.tsx          3-step recipient portal: verify → decrypt → claimed
-    dashboard/page.tsx      records · explorer · analytics · settings (all live data)
-    docs/page.tsx           in-app documentation
-    opengraph-image.tsx     generated OG image
-    api/
-      campaigns/route.ts    POST campaign · GET by admin · GET one by airdrop
-      claims/route.ts       GET claims by recipient
-      webhook/route.ts      GET/POST config · PUT fire-on-claim
+    distribute/       # 5-step distribution wizard
+    claim/            # Recipient claim page with FHE decrypt and on-chain claim
+    dashboard/        # Admin records, analytics, block explorer, webhook settings
+    docs/             # In-app documentation
+    api/              # Next.js route handlers
   components/
-    AppShell, StepRail, DistributionDetail, ZKCanvas, CanvasBackground,
-    QRCode, Tooltip, Skeleton, Faucet, toast
+    ZKCanvas.tsx      # Animated FHE seal visualization (HTML canvas)
+    claim/
+      BalanceCard.tsx # Live confidential cUSDT balance with one-click reveal
+    Faucet.tsx        # Test cUSDT mint + wrap helper
+    AppShell.tsx      # Top nav: wallet connect, network guard, dark mode toggle
   lib/
-    constants, abi, csv, format, store, types, wagmi
+    constants.ts      # Sepolia contract addresses and chain config
+    abi.ts            # Minimal ABIs for on-chain reads
+    format.ts         # Token formatting, time helpers
+    types.ts          # Shared TypeScript interfaces
   context/
-    SottoContext.tsx        dark mode + drawers + address book + batch queue
+    SottoContext.tsx  # Dark mode + batch distribution state
 ```
 
 ---
 
-_Sepolia testnet · cUSDT (ERC-7984) · Confidential distribution powered by FHE._
+## Gas notes
+
+- `setOperator` is sent once per (token, spender) pair — subsequent distributions skip it via an on-chain `isOperator` read, saving ~100k gas per run
+- Airdrop creation deploys a factory clone (~300–500k gas) — one-time cost per campaign
+- Disperse gas scales linearly with recipient count — each confidential transfer runs through the FHEVM coprocessor
+- A pre-distribution balance guard checks confidential balance before sealing, preventing the ERC-7984 silent zero-transfer failure mode
+
+---
+
+Built for **Zama Developer Program Mainnet Season 3** · Special Bounty × TokenOps · Prize: 2,500 cUSDT
