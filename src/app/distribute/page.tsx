@@ -398,10 +398,10 @@ export default function DistributePage() {
       </div>
 
       <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "center", minHeight: "calc(100vh - 56px)", marginTop: 2.5 }}>
-        <div style={{ display: "flex", width: "100%", maxWidth: step >= 4 ? 760 : 1120, transition: "max-width .4s ease" }}>
+        <div style={{ display: "flex", width: "100%", maxWidth: step === 4 ? 1060 : step === 5 ? 760 : 1120, transition: "max-width .4s ease" }}>
         {/* Main */}
-        <div style={{ flex: 1, padding: "46px 44px", overflowY: "auto", display: "flex", justifyContent: "center" }}>
-          <div style={{ maxWidth: step >= 4 ? 760 : 600, width: "100%" }}>
+        <div style={{ flex: 1, padding: step === 4 ? "34px 44px 48px" : "46px 44px", overflowY: "auto", display: "flex", justifyContent: "center" }}>
+          <div style={{ maxWidth: step === 4 ? 1060 : step === 5 ? 760 : 600, width: "100%" }}>
 
             {/* Step rail — visible on steps 1-4 */}
             {step <= 4 && (
@@ -735,11 +735,11 @@ export default function DistributePage() {
             {/* ─── STEP 4: ZK Sealing ─── */}
             {step === 4 && (
               <div style={{ animation: "fd .4s ease both" }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".2em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 14 }}>Step 04 / 04 — Sealing</div>
-                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: "0 0 6px", letterSpacing: "-.015em" }}>Sealing on-chain</h2>
-                <p style={{ fontSize: 15, color: "var(--mid)", margin: "10px 0 26px", maxWidth: 560, lineHeight: 1.6 }}>Encrypting {validCount} allocation{validCount === 1 ? "" : "s"} with FHE and committing the proof to Sepolia. Keep this tab open until it confirms.</p>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".2em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 10 }}>Step 04 / 04 — Sealing</div>
+                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 40, color: "var(--ink)", margin: "0 0 6px", letterSpacing: "-.015em" }}>Sealing on-chain</h2>
+                <p style={{ fontSize: 14.5, color: "var(--mid)", margin: "8px 0 20px", maxWidth: 560, lineHeight: 1.55 }}>Encrypting {validCount} allocation{validCount === 1 ? "" : "s"} with FHE and committing the proof to Sepolia. Keep this tab open until it confirms.</p>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, alignItems: "stretch" }} className="airdrop-grid">
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.6fr) 320px", gap: 18, alignItems: "start" }} className="airdrop-grid">
                   {/* Left: circuit + phases */}
                   <div>
                     <div style={{ position: "relative", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 6, overflow: "hidden", marginBottom: 12 }}>
@@ -779,23 +779,32 @@ export default function DistributePage() {
                     </div>
 
                     {/* Operation log — shows real-time per-recipient encryption status */}
-                    {sealLog.length > 0 && (
-                      <div style={{ marginTop: 14, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 5, padding: "14px 16px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)" }}>Operation log</div>
-                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT · euint64</div>
-                        </div>
-                        <div style={{ maxHeight: 180, overflowY: "auto" }}>
-                          {sealLog.map((row, i) => (
-                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderBottom: i < sealLog.length - 1 ? "1px solid var(--line)" : "none", animation: "rowIn .3s ease both" }}>
-                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", width: 22, flexShrink: 0 }}>#{row.idx}</span>
-                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)", flex: 1 }}>{row.addr}</span>
-                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: row.done ? "var(--green)" : "var(--accent)", minWidth: 70, textAlign: "right" }}>{row.op}</span>
-                            </div>
-                          ))}
-                        </div>
+                    <div style={{ marginTop: 14, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 5, padding: "14px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)" }}>Operation log</div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>{sealLog.filter(r => r.done).length} / {validCount} · cUSDT euint64</div>
                       </div>
-                    )}
+                      <div style={{ minHeight: 210, maxHeight: 210, overflowY: "auto" }}>
+                        {sealLog.length > 0 ? sealLog.map((row, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: i < sealLog.length - 1 ? "1px solid var(--line)" : "none", animation: "rowIn .3s ease both" }}>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", width: 22, flexShrink: 0 }}>#{row.idx}</span>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)", flex: 1 }}>{row.addr}</span>
+                            <span style={{ height: 10, width: (44 + (i * 37) % 56) + "px", background: "var(--bar)", borderRadius: 1, flexShrink: 0 }} />
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: row.done ? "var(--green)" : "var(--accent)", minWidth: 70, textAlign: "right" }}>{row.op}</span>
+                          </div>
+                        )) : (
+                          // Placeholder rows so the panel isn't blank before encryption starts
+                          rows.slice(0, Math.min(rows.length, 6)).map((r, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: i < Math.min(rows.length, 6) - 1 ? "1px solid var(--line)" : "none", opacity: 0.5 }}>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", width: 22, flexShrink: 0 }}>#{i + 1}</span>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", flex: 1 }}>{shortAddr(r.recipient, 5)}</span>
+                              <span style={{ height: 10, width: (44 + (i * 37) % 56) + "px", background: "var(--line)", borderRadius: 1, flexShrink: 0 }} />
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", minWidth: 70, textAlign: "right" }}>queued</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Right: crypto detail + live status */}
@@ -809,23 +818,40 @@ export default function DistributePage() {
                         </div>
                       ))}
                     </div>
-                    <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px", flex: 1 }}>
+                    <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px" }}>
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 12 }}>Live status</div>
                       {["Encrypt", "ZK Proof", "Broadcast", "Confirm"].map((label, i) => {
                         const active = execPhaseIdx === i, done = execPhaseIdx > i;
                         return (
-                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", opacity: active || done ? 1 : 0.4 }}>
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0", opacity: active || done ? 1 : 0.45 }}>
                             <span style={{ width: 7, height: 7, borderRadius: "50%", background: done ? "var(--green)" : active ? "var(--accent)" : "var(--soft)", animation: active ? "glow 1.4s ease-in-out infinite" : "none", flexShrink: 0 }} />
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: done ? "var(--green)" : active ? "var(--ink)" : "var(--soft)" }}>{label}</span>
-                            {done && <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--green)" }}>done</span>}
-                            {active && <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>…</span>}
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, color: done ? "var(--green)" : active ? "var(--ink)" : "var(--soft)" }}>{label}</span>
+                            <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, color: done ? "var(--green)" : active ? "var(--accent)" : "var(--soft)" }}>{done ? "✓ done" : active ? "active" : "waiting"}</span>
                           </div>
                         );
                       })}
-                      <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--mid)", lineHeight: 1.5 }}>
-                        {execPhaseLabel || "Preparing…"}
+                      <div style={{ borderTop: "1px solid var(--line)", marginTop: 8, paddingTop: 12 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                          <span style={{ fontSize: 12, color: "var(--soft)" }}>Contract</span>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)" }}>{shortAddr(method === "disperse" ? TOKENOPS.disperseSingleton : TOKENOPS.airdropFactory, 5)}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 12, color: "var(--soft)" }}>Est. gas</span>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)" }}>~{(validCount * 23800 + 42000).toLocaleString()} gas</span>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Delivery method note */}
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 14px", background: method === "disperse" ? "rgba(111,175,142,.08)" : "rgba(200,71,43,.06)", border: `1px solid ${method === "disperse" ? "rgba(111,175,142,.35)" : "rgba(200,71,43,.25)"}`, borderRadius: 4 }}>
+                      <span style={{ width: 16, height: 16, borderRadius: "50%", border: `1.4px solid ${method === "disperse" ? "var(--green)" : "var(--accent)"}`, color: method === "disperse" ? "var(--green)" : "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontSize: 10, flexShrink: 0, marginTop: 1 }}>i</span>
+                      <div style={{ fontSize: 12, color: "var(--mid)", lineHeight: 1.55 }}>
+                        {method === "disperse"
+                          ? <><strong style={{ color: "var(--ink)" }}>Sent directly to wallets.</strong> Recipients receive their sealed balance immediately — no claim step needed. They can decrypt it anytime.</>
+                          : <><strong style={{ color: "var(--ink)" }}>Claim-based airdrop.</strong> Recipients pull their allocation from the claim page whenever they&apos;re ready, within the claim window.</>}
+                      </div>
+                    </div>
+
                     {/* Privacy statement */}
                     <div style={{ background: "var(--ink)", borderRadius: 4, padding: "14px 16px", position: "relative", overflow: "hidden" }}>
                       <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(45deg,transparent,transparent 7px,rgba(255,255,255,.04) 7px,rgba(255,255,255,.04) 8px)" }} />
