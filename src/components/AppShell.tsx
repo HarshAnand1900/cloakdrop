@@ -29,7 +29,6 @@ export function AppShell() {
     { label: "New distribution", href: "/distribute" },
     { label: "Distributions", href: "/dashboard" },
     { label: "Claim", href: "/claim" },
-    { label: "Docs", href: "/docs" },
   ];
 
   return (
@@ -77,6 +76,14 @@ export function AppShell() {
 
       {/* Right side */}
       <div style={{ display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
+
+        {/* Docs link */}
+        <a
+          href="/docs"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".08em", color: "var(--mid)", textDecoration: "none", transition: "color .2s", textTransform: "uppercase" }}
+        >
+          Docs
+        </a>
 
         {/* Network badge */}
         <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 11px", borderRadius: 999, border: "1px solid var(--line)", transition: "border-color .4s" }}>

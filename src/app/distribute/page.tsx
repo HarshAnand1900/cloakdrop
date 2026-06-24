@@ -735,8 +735,9 @@ export default function DistributePage() {
             {/* ─── STEP 4: ZK Sealing ─── */}
             {step === 4 && (
               <div style={{ animation: "fd .4s ease both" }}>
-                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: "0 0 6px", letterSpacing: "-.015em" }}>ZK proof circuit</h2>
-                <p style={{ fontSize: 15, color: "var(--mid)", margin: "0 0 24px" }}>Encrypting {validCount} allocation{validCount === 1 ? "" : "s"} with FHE and sealing them on-chain. Keep this tab open.</p>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".2em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 14 }}>Step 04 / 04 — Sealing</div>
+                <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 44, color: "var(--ink)", margin: "0 0 6px", letterSpacing: "-.015em" }}>Sealing on-chain</h2>
+                <p style={{ fontSize: 15, color: "var(--mid)", margin: "10px 0 26px", maxWidth: 560, lineHeight: 1.6 }}>Encrypting {validCount} allocation{validCount === 1 ? "" : "s"} with FHE and committing the proof to Sepolia. Keep this tab open until it confirms.</p>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, alignItems: "stretch" }} className="airdrop-grid">
                   {/* Left: circuit + phases */}
