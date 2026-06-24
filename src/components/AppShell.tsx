@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useEffect, useState, useRef } from "react";
+import { useAccount, useDisconnect } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useRouter, usePathname } from "next/navigation";
 import { useSotto } from "@/context/SottoContext";
@@ -10,9 +10,21 @@ import { shortAddr, timeAgo } from "@/lib/format";
 export function AppShell() {
   const { address, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
+  const { disconnect } = useDisconnect();
   const router = useRouter();
   const path = usePathname();
   const sotto = useSotto();
+  const [walletOpen, setWalletOpen] = useState(false);
+  const walletRef = useRef<HTMLDivElement>(null);
+
+  // Close wallet dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (walletRef.current && !walletRef.current.contains(e.target as Node)) setWalletOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
   const isDark = sotto.mode === "dark";
 
   // Real activity count for the bell badge.
@@ -142,9 +154,46 @@ export function AppShell() {
 
         {/* Wallet */}
         {isConnected && address ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 13px", borderRadius: 2, border: "1px solid var(--line)", cursor: "pointer", transition: "border-color .2s" }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "float 2.4s ease-in-out infinite" }} />
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{shortAddr(address, 4)}</span>
+          <div ref={walletRef} style={{ position: "relative" }}>
+            <div
+              onClick={() => setWalletOpen(o => !o)}
+              style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 13px", borderRadius: 2, border: `1px solid ${walletOpen ? "var(--accent)" : "var(--line)"}`, cursor: "pointer", transition: "border-color .2s", userSelect: "none" }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "float 2.4s ease-in-out infinite" }} />
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{shortAddr(address, 4)}</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginLeft: 2 }}>▾</span>
+            </div>
+            {walletOpen && (
+              <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, minWidth: 210, background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 5, boxShadow: "0 12px 40px rgba(0,0,0,.22)", zIndex: 100, animation: "fd .15s ease both", overflow: "hidden" }}>
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)" }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 4 }}>Connected</div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)" }}>{shortAddr(address, 8)}</div>
+                </div>
+                {[
+                  { label: "Copy address", icon: "⎘", action: () => { navigator.clipboard?.writeText(address); setWalletOpen(false); } },
+                  { label: "New distribution", icon: "↗", action: () => { router.push("/distribute"); setWalletOpen(false); } },
+                  { label: "My distributions", icon: "▦", action: () => { router.push("/dashboard"); setWalletOpen(false); } },
+                  { label: "Claim allocations", icon: "↓", action: () => { router.push("/claim"); setWalletOpen(false); } },
+                ].map(item => (
+                  <div key={item.label} onClick={item.action} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", cursor: "pointer", fontSize: 13.5, color: "var(--mid)", transition: "background .15s" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "var(--overlay)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", width: 14, textAlign: "center" }}>{item.icon}</span>
+                    {item.label}
+                  </div>
+                ))}
+                <div style={{ borderTop: "1px solid var(--line)" }}>
+                  <div onClick={() => { disconnect(); setWalletOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", cursor: "pointer", fontSize: 13.5, color: "var(--accent)", transition: "background .15s" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "rgba(200,71,43,.07)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, width: 14, textAlign: "center" }}>⏏</span>
+                    Disconnect
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div

@@ -14,6 +14,19 @@ export default function LandingPage() {
   const sotto = useSotto();
   const [revealed, setRevealed] = useState(false);
   const [displayAmt, setDisplayAmt] = useState("•••••••");
+  const [liveStats, setLiveStats] = useState<{ dists: number; recipients: number } | null>(null);
+
+  useEffect(() => {
+    // Fetch real stats from public campaign data
+    fetch("/api/campaigns?admin=all")
+      .then(r => r.json())
+      .then(d => {
+        const camps = Array.isArray(d?.campaigns) ? d.campaigns : [];
+        const recs = camps.reduce((a: number, c: { recipientCount?: number }) => a + (c.recipientCount ?? 0), 0);
+        setLiveStats({ dists: camps.length, recipients: recs });
+      })
+      .catch(() => {});
+  }, []);
 
   const isDark = sotto.mode === "dark";
   const [nothingRevealed, setNothingRevealed] = useState(false);
@@ -87,7 +100,7 @@ export default function LandingPage() {
               <span onClick={sotto.toggleMode} style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: landingSoft, cursor: "pointer", letterSpacing: ".08em" }}>{sotto.modeLabel}</span>
               <div onClick={goCreate} style={{ display: "flex", alignItems: "center", gap: 8, background: landingInk, color: landingPage, padding: "10px 20px", borderRadius: 2, fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all .4s" }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "float 2.4s ease-in-out infinite" }} />
-                {isConnected ? "Open app" : "Connect wallet"}
+                {isConnected ? "Open app →" : "Connect wallet"}
               </div>
             </div>
           </nav>
@@ -190,6 +203,33 @@ export default function LandingPage() {
             </div>
           </section>
 
+        </div>
+
+        {/* Live stats bar */}
+        <div style={{ borderTop: `1px solid ${landingLine}`, background: landingStripBg, backdropFilter: "blur(10px)" }}>
+          <div style={{ maxWidth: 1320, margin: "0 auto", padding: "9px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "glow 2.2s ease-in-out infinite", flexShrink: 0 }} />
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: landingSoft }}>Live · Sepolia testnet</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              {[
+                { val: liveStats ? String(liveStats.dists) : "—", label: "distributions sealed" },
+                { val: liveStats ? liveStats.recipients.toLocaleString() : "—", label: "recipients" },
+                { val: "euint64", label: "encryption type" },
+                { val: "ERC-7984", label: "standard" },
+              ].map((item, i, arr) => (
+                <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 20, whiteSpace: "nowrap" }}>
+                  <div>
+                    <span style={{ fontFamily: "var(--font-serif)", fontSize: 16, color: landingInk }}>{item.val}</span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: landingMid, marginLeft: 5, letterSpacing: ".04em" }}>{item.label}</span>
+                  </div>
+                  {i < arr.length - 1 && <div style={{ width: 1, height: 12, background: landingLine, flexShrink: 0 }} />}
+                </div>
+              ))}
+            </div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", color: landingSoft }}>ERC-7984 · ZAMA FHE</div>
+          </div>
         </div>
 
         {/* Use cases strip */}
