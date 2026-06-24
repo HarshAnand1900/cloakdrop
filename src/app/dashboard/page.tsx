@@ -8,6 +8,7 @@ import type { Hex, Address } from "viem";
 import { createConfidentialAirdropClient } from "@tokenops/sdk/fhe-airdrop";
 import { humanizeError } from "@/components/Faucet";
 import { AppShell } from "@/components/AppShell";
+import { QRCode } from "@/components/QRCode";
 import { CanvasBackground } from "@/components/CanvasBackground";
 import { DistributionDetail } from "@/components/DistributionDetail";
 import { SkeletonRow, SkeletonCard } from "@/components/Skeleton";
@@ -90,6 +91,9 @@ export default function DashboardPage() {
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [auditExporting, setAuditExporting] = useState(false);
   const [receipt, setReceipt] = useState<{ blockNumber: string; gasUsed: string; status: string } | null>(null);
+  const [explorerIdx, setExplorerIdx] = useState(0);
+  const [qrModal, setQrModal] = useState<string | null>(null);
+  const [qrCopied, setQrCopied] = useState(false);
 
   useEffect(() => {
     if (!isConnected || !address) return;
@@ -148,19 +152,20 @@ export default function DashboardPage() {
     return () => { alive = false; };
   }, [publicClient, campaigns]);
 
-  // Fetch the REAL receipt for the latest tx when the explorer tab opens.
+  // Fetch the REAL receipt for the selected campaign when the explorer tab opens.
   useEffect(() => {
-    if (dashTab !== "explorer" || !publicClient || !campaigns[0]) return;
+    const selected = campaigns[explorerIdx];
+    if (dashTab !== "explorer" || !publicClient || !selected) return;
     let alive = true;
     setReceipt(null);
     (async () => {
       try {
-        const r = await publicClient.getTransactionReceipt({ hash: campaigns[0].txHash as Hex });
+        const r = await publicClient.getTransactionReceipt({ hash: selected.txHash as Hex });
         if (alive) setReceipt({ blockNumber: r.blockNumber.toString(), gasUsed: r.gasUsed.toString(), status: r.status });
       } catch { /* tx may be too old to fetch receipt */ }
     })();
     return () => { alive = false; };
-  }, [dashTab, publicClient, campaigns]);
+  }, [dashTab, publicClient, campaigns, explorerIdx]);
 
   // Aggregate real totals
   const totalRecipients = campaigns.reduce((a, c) => a + c.recipientCount, 0);
@@ -519,6 +524,7 @@ export default function DashboardPage() {
                         )}
 
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <div onClick={(e) => { e.stopPropagation(); setQrModal(`${typeof window !== "undefined" ? window.location.origin : ""}/claim?id=${c.airdrop}`); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>QR</div>
                           <div onClick={() => setDetailCampaign(c)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Details</div>
                           {!isRevoked(c) && (
                             <div onClick={(e) => { e.stopPropagation(); setRevokeCampaign(c); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Revoke</div>
@@ -575,8 +581,23 @@ export default function DashboardPage() {
         )}
 
         {/* ── BLOCK EXPLORER ── */}
-        {dashTab === "explorer" && (
+        {dashTab === "explorer" && (() => {
+          const sel = campaigns[explorerIdx];
+          const selKey = sel?.airdrop?.toLowerCase() ?? "";
+          const selRecipients = stats[selKey]?.recipients ?? [];
+          return (
           <div className="anim-fd">
+            {/* Campaign selector */}
+            {campaigns.length > 1 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14, flexWrap: "wrap" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)" }}>Distribution</span>
+                {campaigns.map((c, i) => (
+                  <div key={c.airdrop} onClick={() => { setExplorerIdx(i); setReceipt(null); }} style={{ padding: "5px 12px", borderRadius: 3, background: explorerIdx === i ? "rgba(200,71,43,.14)" : "var(--card)", border: `1.5px solid ${explorerIdx === i ? "rgba(200,71,43,.65)" : "var(--line)"}`, cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: 11, color: explorerIdx === i ? "var(--accent)" : "var(--mid)", transition: "all .2s", whiteSpace: "nowrap" }}>
+                    {c.name || shortAddr(c.airdrop, 6)}
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="s-card" style={{ overflow: "hidden" }}>
               {/* Browser chrome */}
               <div style={{ background: "var(--overlay)", borderBottom: "1px solid var(--line)", padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>
@@ -584,24 +605,30 @@ export default function DashboardPage() {
                   {["#ff5f56", "#febc2e", "#28c840"].map(c => <div key={c} style={{ width: 11, height: 11, borderRadius: "50%", background: c }} />)}
                 </div>
                 <a
-                  href={campaigns[0] ? `https://sepolia.etherscan.io/tx/${campaigns[0].txHash}` : "#"}
+                  href={sel ? `https://sepolia.etherscan.io/tx/${sel.txHash}` : "#"}
                   target="_blank" rel="noreferrer"
                   style={{ flex: 1, background: "var(--input-bg)", border: "1px solid var(--line)", borderRadius: 3, padding: "5px 12px", fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--accent)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 >
-                  sepolia.etherscan.io/tx/{campaigns[0] ? shortAddr(campaigns[0].txHash, 12) : "…"}
+                  sepolia.etherscan.io/tx/{sel ? shortAddr(sel.txHash, 12) : "…"}
                 </a>
               </div>
               <div style={{ padding: "24px 28px" }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 16 }}>Transaction Details {!receipt && campaigns[0] && <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--soft)" }}>· loading receipt…</span>}</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 16 }}>
+                  Transaction Details
+                  {!receipt && sel && <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--soft)", marginLeft: 8 }}>· loading receipt…</span>}
+                  {sel && (
+                    <a href={`https://sepolia.etherscan.io/tx/${sel.txHash}`} target="_blank" rel="noreferrer" style={{ float: "right", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", textDecoration: "none", letterSpacing: ".06em" }}>Etherscan ↗</a>
+                  )}
+                </div>
                 {[
-                  ["Transaction Hash", campaigns[0] ? shortAddr(campaigns[0].txHash, 10) : "—"],
+                  ["Transaction Hash", sel ? shortAddr(sel.txHash, 10) : "—"],
                   ["Status", receipt ? (receipt.status === "success" ? "✓ Success" : "✗ Reverted") : "—"],
                   ["Block", receipt ? Number(receipt.blockNumber).toLocaleString() : "—"],
                   ["Network", "Ethereum Sepolia"],
-                  ["From", campaigns[0] ? shortAddr(campaigns[0].admin, 8) : "—"],
-                  ["Contract (Airdrop)", campaigns[0] ? shortAddr(campaigns[0].airdrop, 8) : "—"],
+                  ["From", sel ? shortAddr(sel.admin, 8) : "—"],
+                  ["Contract (Airdrop)", sel ? shortAddr(sel.airdrop, 8) : "—"],
                   ["Gas Used", receipt ? Number(receipt.gasUsed).toLocaleString() : "—"],
-                  ["Created", campaigns[0] ? new Date(campaigns[0].createdAt).toLocaleString("en-GB") : "—"],
+                  ["Created", sel ? new Date(sel.createdAt).toLocaleString("en-GB") : "—"],
                 ].map(([label, value]) => (
                   <div key={label} style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 0, borderBottom: "1px solid var(--line)" }}>
                     <div style={{ padding: "10px 0", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>{label}</div>
@@ -612,16 +639,16 @@ export default function DashboardPage() {
                   Recipients <span style={{ color: "var(--accent)" }}>(public)</span> · amounts <span style={{ color: "var(--accent)" }}>(FHE-sealed)</span>
                 </div>
                 <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px", marginBottom: 20 }}>
-                  {(stats[campaigns[0]?.airdrop?.toLowerCase() ?? ""]?.recipients ?? []).slice(0, 4).map((r, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "5px 0" }}>
+                  {selRecipients.slice(0, 6).map((r, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "5px 0", borderBottom: i < Math.min(selRecipients.length, 6) - 1 ? "1px solid var(--line)" : "none" }}>
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", minWidth: 26 }}>[{i}]</span>
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--ink)", flex: 1 }}>{shortAddr(r.recipient, 8)}</span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>euint64 · sealed</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: r.claimed ? "var(--green)" : "var(--accent)" }}>{r.claimed ? "claimed" : "euint64 · sealed"}</span>
                     </div>
                   ))}
-                  {(!campaigns[0] || (stats[campaigns[0]?.airdrop?.toLowerCase() ?? ""]?.recipients ?? []).length === 0) && (
+                  {(!sel || selRecipients.length === 0) && (
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>
-                      {campaigns[0] ? "Reading recipients…" : "No distributions yet."}
+                      {sel ? "Reading recipients…" : "No distributions yet."}
                     </div>
                   )}
                 </div>
@@ -632,7 +659,8 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ── ANALYTICS · all values computed on-chain ── */}
         {dashTab === "analytics" && (
@@ -751,6 +779,25 @@ export default function DashboardPage() {
         />
       )}
       {detailCampaign && <DistributionDetail campaign={detailCampaign} onClose={() => setDetailCampaign(null)} />}
+
+      {/* QR share modal */}
+      {qrModal && (
+        <div onClick={() => setQrModal(null)} style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(6,5,4,.55)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fd .2s ease both" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 360, background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 8, padding: 32, animation: "up .3s cubic-bezier(.22,.85,.2,1) both", boxShadow: "0 40px 80px rgba(0,0,0,.4)", textAlign: "center" }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 20 }}>Claim QR · share with recipients</div>
+            <div style={{ display: "inline-block", padding: 12, background: "var(--ink)", borderRadius: 6, marginBottom: 20 }}>
+              <QRCode value={qrModal} size={160} />
+            </div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)", background: "var(--input-bg)", border: "1px solid var(--line)", borderRadius: 3, padding: "9px 12px", marginBottom: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{qrModal}</div>
+            <div style={{ display: "flex", gap: 9 }}>
+              <button onClick={() => { navigator.clipboard?.writeText(qrModal); setQrCopied(true); setTimeout(() => setQrCopied(false), 2000); }} style={{ flex: 1, background: "var(--ink)", color: "var(--page-bg)", padding: "11px", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none" }}>
+                {qrCopied ? "✓ Copied" : "Copy link"}
+              </button>
+              <button onClick={() => setQrModal(null)} style={{ padding: "11px 16px", border: "1.5px solid var(--line)", color: "var(--mid)", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 12, cursor: "pointer", background: "none" }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

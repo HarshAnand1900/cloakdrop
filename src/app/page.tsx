@@ -14,6 +14,18 @@ export default function LandingPage() {
   const sotto = useSotto();
   const [revealed, setRevealed] = useState(false);
   const [displayAmt, setDisplayAmt] = useState("•••••••");
+  const [ticker, setTicker] = useState<{ dists: number; recipients: number } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/campaigns?admin=all")
+      .then(r => r.json())
+      .then(d => {
+        const campaigns = Array.isArray(d?.campaigns) ? d.campaigns : [];
+        const recipients = campaigns.reduce((a: number, c: { recipientCount?: number }) => a + (c.recipientCount || 0), 0);
+        setTicker({ dists: campaigns.length, recipients });
+      })
+      .catch(() => {});
+  }, []);
 
   const isDark = sotto.mode === "dark";
   const [nothingRevealed, setNothingRevealed] = useState(false);
@@ -71,11 +83,13 @@ export default function LandingPage() {
 
       {/* ── HERO ── */}
       <div style={{ position: "relative", background: landingBg, transition: "background .4s" }}>
-        <div style={{ position: "relative", overflow: "hidden", minHeight: 540 }}>
+        <div style={{ position: "relative", overflow: "hidden", minHeight: 580, display: "flex", flexDirection: "column" }}>
           <CanvasBackground variant="landing" />
+          {/* Gradient drift overlay */}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,rgba(200,71,43,.07) 0%,transparent 38%,rgba(200,71,43,.04) 72%,transparent 100%)", backgroundSize: "300% 300%", animation: "gradDrift 11s ease-in-out infinite", pointerEvents: "none", zIndex: 0 }} />
 
           {/* Nav */}
-          <nav style={{ position: "relative", zIndex: 6, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "22px 52px", maxWidth: 1320, margin: "0 auto" }}>
+          <nav style={{ position: "relative", zIndex: 6, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 52px", maxWidth: 1320, margin: "0 auto", height: 64, borderBottom: `1px solid ${landingLine}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
               <div style={{ width: 20, height: 20, background: landingInk, display: "flex", alignItems: "center", justifyContent: "center", transition: "background .4s" }}>
                 <div style={{ width: 8, height: 2, background: landingPage, transition: "background .4s" }} />
@@ -83,14 +97,41 @@ export default function LandingPage() {
               <span style={{ fontFamily: "var(--font-serif)", fontSize: 24, color: landingInk }}>Sotto</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 30 }}>
-              <span onClick={() => router.push("/docs")} style={{ fontSize: 14, color: landingMid, cursor: "pointer" }}>Docs</span>
-              <span onClick={sotto.toggleMode} style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: landingSoft, cursor: "pointer", letterSpacing: ".08em" }}>{sotto.modeLabel}</span>
-              <div onClick={goCreate} style={{ display: "flex", alignItems: "center", gap: 8, background: landingInk, color: landingPage, padding: "10px 20px", borderRadius: 2, fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all .4s" }}>
+              <span onClick={() => router.push("/docs")} style={{ fontSize: 14, color: landingMid, cursor: "pointer", transition: "color .2s" }}>Docs</span>
+              <span onClick={sotto.toggleMode} style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: landingSoft, cursor: "pointer", letterSpacing: ".08em", transition: "color .3s" }}>{sotto.modeLabel}</span>
+              <div onClick={goCreate} style={{ display: "flex", alignItems: "center", gap: 8, background: landingInk, color: landingPage, padding: "10px 20px", borderRadius: 2, fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all .4s", animation: "pulseRing 2.6s ease-out 2s infinite" }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "float 2.4s ease-in-out infinite" }} />
                 {isConnected ? "Open app" : "Connect wallet"}
               </div>
             </div>
           </nav>
+
+          {/* Live ticker */}
+          <div style={{ position: "relative", zIndex: 5, borderBottom: `1px solid ${landingLine}`, background: landingStripBg, backdropFilter: "blur(12px)" }}>
+            <div style={{ maxWidth: 1320, margin: "0 auto", padding: "9px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "glow 2.2s ease-in-out infinite", flexShrink: 0 }} />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: landingSoft, transition: "color .4s" }}>Live · Sepolia testnet</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 22, flexWrap: "nowrap" }}>
+                {[
+                  { val: ticker ? String(ticker.dists) : "—", label: "dists" },
+                  { val: ticker ? ticker.recipients.toLocaleString() : "—", label: "recipients" },
+                  { val: "ERC-7984", label: "standard" },
+                  { val: "100%", label: "on-chain", color: "#6FAF8E" },
+                ].map((item, i, arr) => (
+                  <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 20, whiteSpace: "nowrap" }}>
+                    <div>
+                      <span style={{ fontFamily: "var(--font-serif)", fontSize: 17, color: item.color ?? landingInk, transition: "color .4s" }}>{item.val}</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: landingMid, marginLeft: 5, letterSpacing: ".04em", transition: "color .4s" }}>{item.label}</span>
+                    </div>
+                    {i < arr.length - 1 && <div style={{ width: 1, height: 13, background: landingLine, flexShrink: 0, transition: "background .4s" }} />}
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", color: landingSoft, transition: "color .4s" }}>ERC-7984 · ZAMA</div>
+            </div>
+          </div>
 
           {/* Hero */}
           <section style={{ position: "relative", zIndex: 2, maxWidth: 1320, margin: "0 auto", padding: "22px 52px 78px", display: "grid", gridTemplateColumns: "1.06fr .94fr", gap: 60, alignItems: "center" }}>
@@ -99,7 +140,7 @@ export default function LandingPage() {
                 <span style={{ width: 18, height: 1, background: "#C8472B" }} />
                 ERC-7984 · Zama Protocol · FHE
               </div>
-              <h1 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: "clamp(52px,6.5vw,86px)", lineHeight: .96, letterSpacing: "-.018em", margin: 0, color: landingInk }}>
+              <h1 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: "clamp(56px,7vw,96px)", lineHeight: .94, letterSpacing: "-.022em", margin: 0, color: landingInk, transition: "color .4s" }}>
                 Pay everyone.<br />
                 Publish&nbsp;
                 <span
@@ -121,8 +162,13 @@ export default function LandingPage() {
                       transform: nothingRevealed ? "translateX(14px) skewX(-8deg)" : "translateX(0) skewX(0)",
                       opacity: nothingRevealed ? 0 : 1,
                       transition: "transform .55s cubic-bezier(.2,.85,.2,1), opacity .45s ease, background .4s",
+                      animation: !nothingRevealed ? "softPulse 3s ease-in-out 3s 3" : "none",
                     }}
                   />
+                  {/* hover hint */}
+                  {!nothingRevealed && (
+                    <span style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", color: landingPage, pointerEvents: "none", opacity: .55, whiteSpace: "nowrap", transition: "opacity .3s" }}>hover to reveal</span>
+                  )}
                 </span>
               </h1>
               <p style={{ fontSize: 18, lineHeight: 1.6, color: landingMid, maxWidth: 480, margin: "28px 0 0", fontWeight: 300 }}>
@@ -189,6 +235,12 @@ export default function LandingPage() {
               <p style={{ fontSize: 12.5, color: "#8A8273", marginTop: 14, textAlign: "center", fontStyle: "italic", fontFamily: "var(--font-serif)" }}>Everyone sees the ledger. No one reads the amounts.</p>
             </div>
           </section>
+
+          {/* Scroll indicator */}
+          <div style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, animation: "float 2.6s ease-in-out infinite", pointerEvents: "none", opacity: .38, zIndex: 4 }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".22em", textTransform: "uppercase", color: landingInk }}>scroll</span>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M3 9l5 5 5-5" stroke={landingInk} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </div>
         </div>
 
         {/* Use cases strip */}

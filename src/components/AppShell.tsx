@@ -29,6 +29,7 @@ export function AppShell() {
     { label: "New distribution", href: "/distribute" },
     { label: "Distributions", href: "/dashboard" },
     { label: "Claim", href: "/claim" },
+    { label: "Docs", href: "/docs" },
   ];
 
   return (

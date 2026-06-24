@@ -106,6 +106,10 @@ textarea { resize: none; }
 @keyframes glow       { 0%,100%{opacity:.7} 50%{opacity:1} }
 @keyframes notifIn    { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
 @keyframes csvPulse   { 0%,100%{border-color:rgba(200,71,43,.35)} 50%{border-color:rgba(200,71,43,.75)} }
+@keyframes pulseRing  { 0%{box-shadow:0 0 0 0 rgba(200,71,43,.55)} 65%{box-shadow:0 0 0 18px rgba(200,71,43,0)} 100%{box-shadow:0 0 0 0 rgba(200,71,43,0)} }
+@keyframes gradDrift  { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
+@keyframes softPulse  { 0%,100%{opacity:.7} 50%{opacity:1} }
+@keyframes tickerScroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
 @keyframes sdkLine    { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
 @keyframes scanline   { 0%{top:-6px} 100%{top:calc(100% + 6px)} }
 
