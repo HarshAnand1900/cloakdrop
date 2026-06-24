@@ -728,10 +728,9 @@ export default function ClaimPage() {
                                 {row.kind === "disperse" ? (
                                   <DisperseDecrypt txHash={(row as { txHash: Hex }).txHash} recipient={address as Address} />
                                 ) : (
-                                  <>
-                                    <div style={{ height: 13, width: (60 + (i * 41) % 46) + "px", background: "var(--bar)", borderRadius: 2, marginLeft: "auto" }} />
-                                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 3 }}>cUSDT</div>
-                                  </>
+                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+                                    <span style={{ fontSize: 11 }}>🔒</span> sealed · cUSDT
+                                  </span>
                                 )}
                               </div>
                               {row.kind === "disperse" ? (

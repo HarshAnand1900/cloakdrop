@@ -94,6 +94,7 @@ export default function DashboardPage() {
   const [explorerIdx, setExplorerIdx] = useState(0);
   const [qrModal, setQrModal] = useState<string | null>(null);
   const [qrCopied, setQrCopied] = useState(false);
+  const [disperses, setDisperses] = useState<{ txHash: string; name: string; symbol: string; recipients: string[]; createdAt: number }[]>([]);
 
   useEffect(() => {
     if (!isConnected || !address) return;
@@ -103,6 +104,11 @@ export default function DashboardPage() {
       .then(data => setCampaigns(Array.isArray(data?.campaigns) ? data.campaigns : Array.isArray(data) ? data : []))
       .catch(() => setCampaigns([]))
       .finally(() => setLoading(false));
+    // Direct disperses created by this sender (separate from claim-based airdrops)
+    fetch(`/api/disperse?admin=${address}`)
+      .then(r => r.json())
+      .then(d => setDisperses(Array.isArray(d?.disperses) ? d.disperses : []))
+      .catch(() => setDisperses([]));
     // Load saved webhook config
     fetch(`/api/webhook?admin=${address}`)
       .then(r => r.json())
@@ -577,6 +583,34 @@ export default function DashboardPage() {
               <span style={{ fontSize: 12, color: "var(--soft)", fontStyle: "italic", fontFamily: "var(--font-serif)" }}>The blacked-out bars are exactly what Etherscan shows — FHE ciphertext, not a UI mask.</span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)" }}>{filtered.length} record{filtered.length === 1 ? "" : "s"}</span>
             </div>
+
+            {/* ── Direct disperses (push-based, no claim contract) ── */}
+            {disperses.length > 0 && (
+              <div style={{ marginTop: 26 }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: "var(--ink)" }}>Direct disperses</div>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)" }}>{disperses.length} sent</span>
+                </div>
+                <div className="s-card" style={{ overflow: "hidden" }}>
+                  {disperses.map((d, i) => (
+                    <div key={d.txHash} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 16, alignItems: "center", padding: "15px 20px", borderBottom: i < disperses.length - 1 ? "1px solid var(--line)" : "none" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 8px", borderRadius: 3, whiteSpace: "nowrap" }}>DISPERSE</span>
+                      <div>
+                        <div style={{ fontFamily: "var(--font-serif)", fontSize: 18, color: "var(--ink)" }}>{d.name}</div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", marginTop: 2 }}>{d.recipients.length} recipient{d.recipients.length === 1 ? "" : "s"} · {timeAgo(d.createdAt)}</div>
+                      </div>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid rgba(111,175,142,.55)", background: "rgba(111,175,142,.1)", padding: "3px 9px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)" }} />Delivered
+                      </span>
+                      <a href={`https://sepolia.etherscan.io/tx/${d.txHash}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", textDecoration: "none", whiteSpace: "nowrap" }}>tx {shortAddr(d.txHash, 6)} ↗</a>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: "var(--soft)", fontStyle: "italic", fontFamily: "var(--font-serif)" }}>
+                  Direct disperses push sealed balances straight to wallets — no claim contract, so they have no claim-rate.
+                </div>
+              </div>
+            )}
           </div>
         )}
 

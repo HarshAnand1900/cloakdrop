@@ -23,17 +23,24 @@ function getRedis(): Redis | null {
   return new Redis({ url, token });
 }
 
-/** GET /api/disperse?recipient=0x... → all disperses that include this recipient */
+/**
+ * GET /api/disperse?recipient=0x... → disperses that include this recipient
+ * GET /api/disperse?admin=0x...     → disperses created by this sender
+ */
 export async function GET(req: NextRequest) {
   const recipient = req.nextUrl.searchParams.get("recipient");
-  if (!recipient || !isAddress(recipient)) {
-    return NextResponse.json({ error: "valid ?recipient required" }, { status: 400 });
+  const admin = req.nextUrl.searchParams.get("admin");
+  const who = recipient || admin;
+  if (!who || !isAddress(who)) {
+    return NextResponse.json({ error: "valid ?recipient or ?admin required" }, { status: 400 });
   }
   const redis = getRedis();
   if (!redis) return NextResponse.json({ disperses: [] });
 
-  const key = `disperse-recip:${recipient.toLowerCase()}`;
-  const txHashes = await redis.smembers(key) as string[];
+  const key = admin
+    ? `disperse-admin:${admin.toLowerCase()}`
+    : `disperse-recip:${who.toLowerCase()}`;
+  const txHashes = (await redis.smembers(key)) as string[];
   const disperses: DisperseRecord[] = [];
   for (const h of txHashes) {
     const d = await redis.get<DisperseRecord>(`disperse-tx:${h.toLowerCase()}`);
@@ -60,5 +67,7 @@ export async function POST(req: NextRequest) {
   for (const r of body.recipients) {
     await redis.sadd(`disperse-recip:${r.toLowerCase()}`, body.txHash.toLowerCase());
   }
+  // Index by sender so the dashboard can list a sender's disperses.
+  await redis.sadd(`disperse-admin:${body.admin.toLowerCase()}`, body.txHash.toLowerCase());
   return NextResponse.json({ ok: true });
 }
