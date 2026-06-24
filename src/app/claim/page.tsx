@@ -460,28 +460,50 @@ export default function ClaimPage() {
 
       {/* Live status strip — sticky below AppShell */}
       {activeClaim && (
-        <div style={{ position: "sticky", top: 56, zIndex: 10, borderBottom: "1px solid var(--line)", background: "var(--surface)", backdropFilter: "blur(10px)" }}>
-          <div className="stat-strip" style={{ maxWidth: 980, margin: "0 auto", padding: "9px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "glow 2.2s ease-in-out infinite", flexShrink: 0 }} />
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)" }}>Live · Sepolia testnet</span>
+        <div style={{ position: "sticky", top: 56, zIndex: 10, background: "var(--surface)", backdropFilter: "blur(16px)", borderBottom: "1px solid var(--line)" }}>
+          <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", alignItems: "stretch", height: 46, overflow: "hidden" }}>
+            {/* LIVE pill */}
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 20px 0 28px", borderRight: "1px solid var(--line)", flexShrink: 0 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#6FAF8E", boxShadow: "0 0 7px #6FAF8E", flexShrink: 0 }} />
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".18em", textTransform: "uppercase", color: "#6FAF8E", whiteSpace: "nowrap" }}>Live</span>
             </div>
-            <div className="stat-mid" style={{ display: "flex", alignItems: "center", gap: 20 }}>
-              {[
-                { val: activeClaim.name, label: "distribution", color: undefined },
-                { val: new Date(activeClaim.startTime * 1000) <= new Date() ? "Open" : "Pending", label: "claim window", color: "#6FAF8E" },
-                { val: new Date(activeClaim.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }), label: "closes", color: undefined },
-              ].map((item, i, arr) => (
-                <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 20, whiteSpace: "nowrap" }}>
-                  <div>
-                    <span style={{ fontFamily: "var(--font-serif)", fontSize: 16, color: item.color ?? "var(--ink)" }}>{item.val}</span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", marginLeft: 5, letterSpacing: ".04em" }}>{item.label}</span>
-                  </div>
-                  {i < arr.length - 1 && <div style={{ width: 1, height: 12, background: "var(--line)", flexShrink: 0 }} />}
-                </div>
+            {/* Distribution name */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 22px", borderRight: "1px solid var(--line)", minWidth: 0, flex: "0 1 auto" }}>
+              <span style={{ fontFamily: "var(--font-serif)", fontSize: 15, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeClaim.name}</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", flexShrink: 0 }}>dist.</span>
+            </div>
+            {/* Claim window status */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 20px", borderRight: "1px solid var(--line)", flexShrink: 0 }}>
+              {(() => {
+                const now = Date.now() / 1000;
+                const isOpen = activeClaim.startTime <= now && now <= activeClaim.endTime;
+                const isPending = activeClaim.startTime > now;
+                return (
+                  <>
+                    <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: isOpen ? "#6FAF8E" : isPending ? "var(--accent)" : "var(--soft)", flexShrink: 0 }} />
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: isOpen ? "#6FAF8E" : isPending ? "var(--accent)" : "var(--soft)", fontWeight: 500 }}>
+                      {isOpen ? "Open" : isPending ? "Pending" : "Closed"}
+                    </span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)", letterSpacing: ".07em" }}>claim window</span>
+                  </>
+                );
+              })()}
+            </div>
+            {/* Closes date */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 20px", borderRight: "1px solid var(--line)", flexShrink: 0 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink)" }}>
+                {new Date(activeClaim.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              </span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)", letterSpacing: ".07em" }}>closes</span>
+            </div>
+            {/* Tech badges */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 22px 0 20px", marginLeft: "auto" }}>
+              {["ERC-7984", "ZAMA FHE"].map((tag) => (
+                <span key={tag} style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)", background: "var(--overlay)", border: "1px solid var(--line)", padding: "3px 8px", borderRadius: 3 }}>
+                  {tag}
+                </span>
               ))}
             </div>
-            <div className="stat-end" style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", color: "var(--soft)" }}>ERC-7984 · ZAMA FHE</div>
           </div>
         </div>
       )}
@@ -568,42 +590,35 @@ export default function ClaimPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: 16, alignItems: "start", marginBottom: 30 }} className="airdrop-grid">
                   {/* LEFT: allocation card */}
                   <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 6, padding: "24px 26px" }}>
-                    {/* Multi-claim tabs — pending first, claimed dimmed */}
-                    {claims.length > 1 && (
-                      <div style={{ marginBottom: 16 }}>
-                        <div style={{ display: "flex", gap: 6, overflowX: "auto", flexWrap: "nowrap", paddingBottom: 2 }}>
-                          {[
-                            ...claims.map((c, i) => ({ c, i })).filter(({ c }) => !claimedMap[c.airdrop.toLowerCase()]),
-                            ...claims.map((c, i) => ({ c, i })).filter(({ c }) => !!claimedMap[c.airdrop.toLowerCase()]),
-                          ].map(({ c, i }) => {
-                            const isClaimed = !!claimedMap[c.airdrop.toLowerCase()];
-                            const isActive = activeIdx === i;
-                            return (
-                              <div
-                                key={i}
-                                onClick={() => setActiveIdx(i)}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: 5,
-                                  padding: "5px 10px", borderRadius: 3, flexShrink: 0,
-                                  background: isActive ? "rgba(200,71,43,.15)" : "var(--overlay)",
-                                  border: `1.5px solid ${isActive ? "rgba(200,71,43,.65)" : isClaimed ? "transparent" : "var(--line)"}`,
-                                  cursor: "pointer", whiteSpace: "nowrap",
-                                  fontFamily: "var(--font-mono)", fontSize: 11,
-                                  opacity: isClaimed && !isActive ? 0.4 : 1,
-                                  transition: "opacity .2s, border-color .2s",
-                                }}
-                              >
-                                {isClaimed
-                                  ? <span style={{ fontSize: 9, color: "var(--soft)" }}>✓</span>
-                                  : <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
-                                }
+                    {/* Multi-claim tabs — pending as pills, claimed collapsed */}
+                    {claims.length > 1 && (() => {
+                      const pendingItems = claims.map((c, i) => ({ c, i })).filter(({ c }) => !claimedMap[c.airdrop.toLowerCase()]);
+                      const claimedItems = claims.map((c, i) => ({ c, i })).filter(({ c }) => !!claimedMap[c.airdrop.toLowerCase()]);
+                      const activeIsClaimed = activeClaim ? !!claimedMap[activeClaim.airdrop.toLowerCase()] : false;
+                      return (
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", alignItems: "center", overflowX: "auto", paddingBottom: 2 }}>
+                            {/* Pending claims — individual pills */}
+                            {pendingItems.map(({ c, i }) => (
+                              <div key={i} onClick={() => setActiveIdx(i)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 3, flexShrink: 0, background: activeIdx === i ? "rgba(200,71,43,.15)" : "var(--overlay)", border: `1.5px solid ${activeIdx === i ? "rgba(200,71,43,.65)" : "var(--line)"}`, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11, transition: "all .2s" }}>
+                                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
                                 {c.name || `Distribution ${i + 1}`}
                               </div>
-                            );
-                          })}
+                            ))}
+                            {/* Claimed — single collapsed chip */}
+                            {claimedItems.length > 0 && (
+                              <div onClick={() => setActiveIdx(claimedItems[activeIsClaimed ? (claimedItems.findIndex(x => x.i === activeIdx) + 1) % claimedItems.length : 0].i)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 3, flexShrink: 0, background: activeIsClaimed ? "rgba(200,71,43,.1)" : "var(--overlay)", border: `1.5px solid ${activeIsClaimed ? "rgba(200,71,43,.4)" : "transparent"}`, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11, opacity: activeIsClaimed ? 1 : 0.45, transition: "all .2s" }}>
+                                <span style={{ fontSize: 9, color: "var(--soft)" }}>✓</span>
+                                {claimedItems.length === 1 ? (claimedItems[0].c.name || "Distribution") : `${claimedItems.length} claimed`}
+                              </div>
+                            )}
+                          </div>
+                          {pendingItems.length === 0 && (
+                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 6, letterSpacing: ".06em" }}>All allocations claimed · click to view</div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                     {/* Header + badge */}
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, marginBottom: 20 }}>
                       <div>
