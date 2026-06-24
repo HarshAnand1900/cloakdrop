@@ -19,23 +19,41 @@ export function Faucet({ onFunded }: { onFunded?: () => void }) {
     if (!address || !walletClient || !publicClient) return;
     const amount = parseUnits(MINT_AMOUNT, CUSDT.decimals);
     try {
-      setBusy("Minting test USDT…");
-      const mintHash = await walletClient.writeContract({
-        address: CUSDT.underlying,
-        abi: underlyingAbi,
-        functionName: "mint",
-        args: [address, amount],
-      });
-      await publicClient.waitForTransactionReceipt({ hash: mintHash });
+      // Gas saver: only mint if the wallet doesn't already hold enough underlying.
+      let balance = 0n;
+      try {
+        balance = (await publicClient.readContract({
+          address: CUSDT.underlying, abi: underlyingAbi, functionName: "balanceOf", args: [address],
+        })) as bigint;
+      } catch { /* assume 0 */ }
+      if (balance < amount) {
+        setBusy("Minting test USDT…");
+        const mintHash = await walletClient.writeContract({
+          address: CUSDT.underlying,
+          abi: underlyingAbi,
+          functionName: "mint",
+          args: [address, amount],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: mintHash });
+      }
 
-      setBusy("Approving wrapper…");
-      const approveHash = await walletClient.writeContract({
-        address: CUSDT.underlying,
-        abi: underlyingAbi,
-        functionName: "approve",
-        args: [CUSDT.wrapper, amount],
-      });
-      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      // Gas saver: only approve if current allowance is insufficient.
+      let allowance = 0n;
+      try {
+        allowance = (await publicClient.readContract({
+          address: CUSDT.underlying, abi: underlyingAbi, functionName: "allowance", args: [address, CUSDT.wrapper],
+        })) as bigint;
+      } catch { /* assume 0 */ }
+      if (allowance < amount) {
+        setBusy("Approving wrapper…");
+        const approveHash = await walletClient.writeContract({
+          address: CUSDT.underlying,
+          abi: underlyingAbi,
+          functionName: "approve",
+          args: [CUSDT.wrapper, amount],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      }
 
       setBusy("Wrapping into confidential cUSDT…");
       const wrapHash = await walletClient.writeContract({

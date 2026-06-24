@@ -217,15 +217,29 @@ export default function DistributePage() {
     setSealLog([]);
     const token = CUSDT.wrapper as Address;
 
+    // Gas saver: only authorize the operator if it isn't already set.
+    // Our deadline is year 2106, so one approval covers all future distributions.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async function ensureOperator(abi: any, spender: Address): Promise<boolean> {
+      try {
+        const already = await publicClient!.readContract({ address: token, abi, functionName: "isOperator", args: [address!, spender] }) as boolean;
+        if (already) return false; // skip the tx — already authorized
+      } catch { /* fall through to setOperator if the read fails */ }
+      const opHash = await walletClient!.writeContract({ address: token, abi, functionName: "setOperator", args: [spender, OPERATOR_DEADLINE] });
+      await publicClient!.waitForTransactionReceipt({ hash: opHash });
+      return true;
+    }
+
     try {
       if (method === "airdrop") {
-        // Phase 0 — setOperator
-        setExecPhaseIdx(0); setExecPhaseLabel("Check MetaMask — approve authorization"); setExecProgress(5);
+        // Phase 0 — authorize operator (skipped if already set)
+        setExecPhaseIdx(0); setExecPhaseLabel("Checking operator authorization…"); setExecProgress(5);
         startStuckTimer();
-        const opHash = await walletClient.writeContract({ address: token, abi: erc7984OperatorAbi, functionName: "setOperator", args: [TOKENOPS.airdropFactory, OPERATOR_DEADLINE] });
+        const didAuth = await ensureOperator(erc7984OperatorAbi, TOKENOPS.airdropFactory as Address);
         clearStuckTimer();
-        setExecPhaseLabel("Confirming authorization on Sepolia…"); setExecProgress(12);
-        await publicClient.waitForTransactionReceipt({ hash: opHash });
+        if (didAuth) { setExecPhaseLabel("Authorized ✓"); }
+        else { setExecPhaseLabel("Operator already authorized — skipping (saves gas)"); }
+        setExecProgress(12);
 
         // Deploy + fund
         setExecPhaseLabel("Check MetaMask — approve deploy & fund"); setExecProgress(18);
@@ -275,13 +289,13 @@ export default function DistributePage() {
 
       } else {
         // ── Disperse ──
-        // Phase 0 — setOperator
-        setExecPhaseIdx(0); setExecPhaseLabel("Check MetaMask — approve authorization"); setExecProgress(8);
+        // Phase 0 — authorize operator (skipped if already set)
+        setExecPhaseIdx(0); setExecPhaseLabel("Checking operator authorization…"); setExecProgress(8);
         startStuckTimer();
-        const opHash = await walletClient.writeContract({ address: token, abi: disperseOperatorAbi, functionName: "setOperator", args: [TOKENOPS.disperseSingleton, OPERATOR_DEADLINE] });
+        const didAuth = await ensureOperator(disperseOperatorAbi, TOKENOPS.disperseSingleton as Address);
         clearStuckTimer();
-        setExecPhaseLabel("Confirming authorization on Sepolia…"); setExecProgress(22);
-        await publicClient.waitForTransactionReceipt({ hash: opHash });
+        setExecPhaseLabel(didAuth ? "Authorized ✓" : "Operator already authorized — skipping (saves gas)");
+        setExecProgress(22);
 
         // Phase 1 — FHE encrypt batch (browser) then wallet tx
         // Note: client.disperse() does BOTH encrypt AND tx in one call.
