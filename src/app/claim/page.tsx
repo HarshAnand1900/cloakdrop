@@ -383,6 +383,10 @@ export default function ClaimPage() {
         if (preselectedId) {
           const idx = all.findIndex(c => c.airdrop.toLowerCase() === preselectedId);
           if (idx >= 0) { setActiveIdx(idx); setClaimStep(2); }
+        } else if (all.length > 0) {
+          // Default to the most recently created claim (highest startTime)
+          const latestIdx = all.reduce((best, c, i) => c.startTime > all[best].startTime ? i : best, 0);
+          setActiveIdx(latestIdx);
         }
       })
       .catch(() => setClaims([]))
