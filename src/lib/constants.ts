@@ -20,6 +20,11 @@ export const TOKENOPS = {
   disperseSingleton: "0x710dD9885Cc9986EfD234E7719483147a6d8DBb4" as const,
 };
 
+/** Zama Wrappers Registry on Sepolia — maps ERC-20s to their ERC-7984 wrappers.
+ *  (Per Zama Protocol official Sepolia addresses directory.) */
+export const WRAPPERS_REGISTRY =
+  "0x2f0750Bbb0A246059d80e94c454586a7F27a128e" as const;
+
 /** FHEVM ACL contract on Sepolia (from @zama-fhe/sdk SepoliaConfig). */
 export const ACL_ADDRESS =
   "0xf0Ffdc93b7E186bC2f8CB3dAA75D86d1930A433D" as const;

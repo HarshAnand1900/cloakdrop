@@ -167,7 +167,10 @@ export default function LandingPage() {
                     <span style={{ fontFamily: "var(--font-serif)", fontSize: 24, color: "#12100D" }}>Distribution <span style={{ fontFamily: "var(--font-mono)", fontSize: 18, opacity: .65 }}>#0427</span></span>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "#8A8273", letterSpacing: ".07em" }}>SEPOLIA</span>
                   </div>
-                  <div style={{ fontSize: 13.5, color: "#6A6354", marginTop: 5 }}>Q2 Investor allocation · 142 recipients</div>
+                  <div style={{ fontSize: 13.5, color: "#6A6354", marginTop: 5, display: "flex", alignItems: "center", gap: 8 }}>
+                    Q2 Investor allocation · 142 recipients
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".12em", color: "#8A8273", border: "1px solid rgba(18,16,13,.18)", padding: "2px 6px", borderRadius: 2 }}>SAMPLE</span>
+                  </div>
                 </div>
                 {[["0x4f29…b2A1", 84], ["0xc1aE…9Fd0", 62]].map(([a, w]) => (
                   <div key={String(a)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 26px", borderBottom: "1px solid rgba(18,16,13,.05)" }}>

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useSotto } from "@/context/SottoContext";
-import { CUSDT, TOKENOPS, ACL_ADDRESS, explorerAddr } from "@/lib/constants";
+import { CUSDT, TOKENOPS, ACL_ADDRESS, WRAPPERS_REGISTRY, explorerAddr } from "@/lib/constants";
 
 function H({ children }: { children: React.ReactNode }) {
   return <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 32, color: "var(--ink)", margin: "0 0 14px", letterSpacing: "-.015em" }}>{children}</h2>;
@@ -202,9 +202,11 @@ export default function DocsPage() {
             <P>Next.js · wagmi · viem · RainbowKit · <Mono>@tokenops/sdk</Mono> (fhe-airdrop + fhe-disperse) · <Mono>@zama-fhe/sdk</Mono> + <Mono>@zama-fhe/react-sdk</Mono> · Upstash Redis.</P>
             <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "6px 18px", marginTop: 8 }}>
               {[
+                ["cUSDT wrapper (official Zama Sepolia)", CUSDT.wrapper],
+                ["cUSDT underlying ERC-20", CUSDT.underlying],
+                ["Wrappers Registry (Zama)", WRAPPERS_REGISTRY],
                 ["Airdrop factory", TOKENOPS.airdropFactory],
                 ["Disperse singleton", TOKENOPS.disperseSingleton],
-                ["cUSDT wrapper", CUSDT.wrapper],
                 ["FHEVM ACL", ACL_ADDRESS],
               ].map(([label, addr], i, arr) => (
                 <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : "none", gap: 12 }}>
