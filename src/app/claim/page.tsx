@@ -458,9 +458,9 @@ export default function ClaimPage() {
     <>
       <AppShell tag="CLAIM" />
 
-      {/* Live status strip — shows distribution-specific stats */}
+      {/* Live status strip — sticky below AppShell */}
       {activeClaim && (
-        <div style={{ position: "relative", zIndex: 10, borderBottom: "1px solid var(--line)", background: "var(--surface)", backdropFilter: "blur(10px)" }}>
+        <div style={{ position: "sticky", top: 56, zIndex: 10, borderBottom: "1px solid var(--line)", background: "var(--surface)", backdropFilter: "blur(10px)" }}>
           <div className="stat-strip" style={{ maxWidth: 980, margin: "0 auto", padding: "9px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "glow 2.2s ease-in-out infinite", flexShrink: 0 }} />
@@ -571,9 +571,6 @@ export default function ClaimPage() {
                     {/* Multi-claim tabs — pending first, claimed dimmed */}
                     {claims.length > 1 && (
                       <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 7 }}>
-                          {claims.filter(c => !claimedMap[c.airdrop.toLowerCase()]).length} pending · {claims.filter(c => !!claimedMap[c.airdrop.toLowerCase()]).length} claimed
-                        </div>
                         <div style={{ display: "flex", gap: 6, overflowX: "auto", flexWrap: "nowrap", paddingBottom: 2 }}>
                           {[
                             ...claims.map((c, i) => ({ c, i })).filter(({ c }) => !claimedMap[c.airdrop.toLowerCase()]),
@@ -613,10 +610,17 @@ export default function ClaimPage() {
                         <div style={{ fontFamily: "var(--font-serif)", fontSize: 25, color: "var(--ink)", lineHeight: 1.1 }}>{activeClaim?.name || "Distribution"}</div>
                         <div style={{ fontSize: 13, color: "var(--mid)", marginTop: 5 }}>Sealed allocation · confidential ERC-20</div>
                       </div>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid #6FAF8E", background: "rgba(111,175,142,.1)", padding: "5px 10px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
-                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />
-                        ELIGIBLE
-                      </span>
+                      {activeClaim && claimedMap[activeClaim.airdrop.toLowerCase()] ? (
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", border: "1px solid var(--line)", background: "var(--overlay)", padding: "5px 10px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--soft)" }} />
+                          CLAIMED
+                        </span>
+                      ) : (
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid #6FAF8E", background: "rgba(111,175,142,.1)", padding: "5px 10px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />
+                          ELIGIBLE
+                        </span>
+                      )}
                     </div>
                     {/* Facts grid */}
                     {activeClaim && (
@@ -647,8 +651,8 @@ export default function ClaimPage() {
                       </div>
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", letterSpacing: ".08em" }}>SEALED</span>
                     </div>
-                    <button className="s-btn" style={{ width: "100%", justifyContent: "center", fontSize: 15, animation: "pulseRing 2.6s ease-out 1.2s infinite" }} onClick={() => setClaimStep(2)}>
-                      Open my sealed allocation →
+                    <button className="s-btn" style={{ width: "100%", justifyContent: "center", fontSize: 15, animation: activeClaim && claimedMap[activeClaim.airdrop.toLowerCase()] ? "none" : "pulseRing 2.6s ease-out 1.2s infinite" }} onClick={() => setClaimStep(2)}>
+                      {activeClaim && claimedMap[activeClaim.airdrop.toLowerCase()] ? "Decrypt sealed amount →" : "Open my sealed allocation →"}
                     </button>
                   </div>
 
@@ -819,11 +823,6 @@ export default function ClaimPage() {
                 </div>
               )}
 
-              {claimView === "allocation" && (
-                <p style={{ fontSize: 12, color: "var(--soft)", lineHeight: 1.55, maxWidth: 440, margin: "14px auto 0", fontStyle: "italic", fontFamily: "var(--font-serif)", textAlign: "center" }}>
-                  A zero-knowledge proof confirmed you&apos;re on the list — without exposing other recipients or their amounts.
-                </p>
-              )}
             </div>
           )}
 
