@@ -328,6 +328,7 @@ export default function ClaimPage() {
   const [claimTab, setClaimTab] = useState<"all" | "pending" | "claimed">("all");
   const [showExplorerModal, setShowExplorerModal] = useState(false);
   const [claimView, setClaimView] = useState<"allocation" | "activity">("allocation");
+  const [balanceRefresh, setBalanceRefresh] = useState(0);
 
   // Disperse history — direct pushes this recipient received
   const [disperses, setDisperses] = useState<{ txHash: string; name: string; symbol: string; createdAt: number }[]>([]);
@@ -485,7 +486,7 @@ export default function ClaimPage() {
 
               {/* Balance card — always shown */}
               <div style={{ marginBottom: 14 }}>
-                <BalanceCard />
+                <BalanceCard refreshSignal={balanceRefresh} />
               </div>
 
               {/* Segmented view toggle: Allocation | Activity */}
@@ -781,6 +782,7 @@ export default function ClaimPage() {
                 onClaimed={(txHash, amount) => {
                   setClaimResult({ txHash, amount });
                   setClaimStep(3);
+                  setBalanceRefresh(n => n + 1); // balance handle changed — re-read it
                   fetch(`/api/campaigns?airdrop=${activeClaim.airdrop}`)
                     .then(r => r.json())
                     .then(d => { if (d?.campaign?.admin) fireWebhook(d.campaign.admin, activeClaim.airdrop, activeClaim.recipient); })
@@ -829,7 +831,7 @@ export default function ClaimPage() {
               </div>
 
               <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                <button className="s-btn" onClick={() => { setClaimStep(1); setClaimResult(null); setInnerPhase("idle"); setDisplayAmt("•••••••"); if (address) loadClaims(address); }} style={{ fontSize: 15, padding: "13px 30px" }}>Done</button>
+                <button className="s-btn" onClick={() => { setClaimStep(1); setClaimResult(null); setInnerPhase("idle"); setDisplayAmt("•••••••"); setBalanceRefresh(n => n + 1); if (address) loadClaims(address); }} style={{ fontSize: 15, padding: "13px 30px" }}>Done</button>
                 <div onClick={() => setShowExplorerModal(true)} style={{ border: "1.5px solid var(--line)", color: "var(--mid)", padding: "13px 22px", borderRadius: 3, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>View on explorer</div>
                 <div onClick={() => window.location.href = "/dashboard"} style={{ border: "1.5px solid var(--line)", color: "var(--mid)", padding: "13px 22px", borderRadius: 3, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Distributions</div>
               </div>
