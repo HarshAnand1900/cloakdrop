@@ -23,7 +23,8 @@ import { humanizeError } from "@/components/Faucet";
 function DisperseDecrypt({ txHash, recipient }: { txHash: Hex; recipient: Address }) {
   const publicClient = usePublicClient();
   const [handle, setHandle] = useState<Hex | null>(null);
-  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [phase, setPhase] = useState<"idle" | "fetching" | "decrypting" | "error">("idle");
+  const [errKind, setErrKind] = useState<"no_event" | "fetch_failed" | "decrypt_failed" | null>(null);
 
   const decrypt = useUserDecrypt(
     { handles: handle ? [{ handle, contractAddress: CUSDT.wrapper }] : [] },
@@ -31,18 +32,35 @@ function DisperseDecrypt({ txHash, recipient }: { txHash: Hex; recipient: Addres
   );
   const value = decrypt.data && handle ? (decrypt.data[handle] as bigint | undefined) : undefined;
 
+  // Move to decrypting phase once handle is set, detect decrypt failure
+  useEffect(() => {
+    if (handle && !decrypt.isFetching && decrypt.data && value === undefined) {
+      setPhase("error");
+      setErrKind("decrypt_failed");
+    }
+    if (handle && decrypt.isFetching) setPhase("decrypting");
+  }, [handle, decrypt.isFetching, decrypt.data, value]);
+
   async function reveal() {
     if (!publicClient) return;
-    setStatus("loading");
+    setPhase("fetching");
+    setErrKind(null);
+    setHandle(null);
     try {
       const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
       const logs = parseEventLogs({ abi: wrapperAbi, eventName: "ConfidentialTransfer", logs: receipt.logs });
       const mine = logs.find((l) => ((l.args as { to?: string }).to ?? "").toLowerCase() === recipient.toLowerCase());
       const amt = mine ? (mine.args as { amount?: Hex }).amount : undefined;
-      if (!amt) { setStatus("error"); return; }
-      setHandle(amt); // triggers useUserDecrypt
+      if (!amt) {
+        setPhase("error");
+        setErrKind("no_event");
+        return;
+      }
+      setHandle(amt);
+      setPhase("decrypting");
     } catch {
-      setStatus("error");
+      setPhase("error");
+      setErrKind("fetch_failed");
     }
   }
 
@@ -53,17 +71,31 @@ function DisperseDecrypt({ txHash, recipient }: { txHash: Hex; recipient: Addres
       </span>
     );
   }
-  if (status === "error") {
-    return <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>reveal balance ↑</span>;
+
+  if (phase === "error") {
+    const msg = errKind === "no_event"
+      ? "Amount sealed in wallet"
+      : errKind === "decrypt_failed"
+      ? "Decrypt failed — retry"
+      : "Could not fetch tx";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>{msg}</span>
+        <button onClick={reveal} style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--accent)", border: "none", background: "none", cursor: "pointer", padding: 0 }}>
+          ↻ retry
+        </button>
+      </div>
+    );
   }
-  const busy = status === "loading" || decrypt.isFetching;
+
+  const busy = phase === "fetching" || phase === "decrypting";
   return (
     <button
       onClick={reveal}
       disabled={busy}
       style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", background: "rgba(200,71,43,.06)", padding: "5px 10px", borderRadius: 999, cursor: busy ? "default" : "pointer", whiteSpace: "nowrap" }}
     >
-      {busy ? "Decrypting…" : "🔓 Decrypt amount"}
+      {phase === "fetching" ? "Fetching tx…" : phase === "decrypting" ? "Decrypting…" : "🔓 Decrypt amount"}
     </button>
   );
 }
@@ -536,14 +568,43 @@ export default function ClaimPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: 16, alignItems: "start", marginBottom: 30 }} className="airdrop-grid">
                   {/* LEFT: allocation card */}
                   <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 6, padding: "24px 26px" }}>
-                    {/* Multi-claim tabs */}
+                    {/* Multi-claim tabs — pending first, claimed dimmed */}
                     {claims.length > 1 && (
-                      <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", flexWrap: "wrap" }}>
-                        {claims.map((c, i) => (
-                          <div key={i} onClick={() => setActiveIdx(i)} style={{ padding: "6px 12px", borderRadius: 3, background: activeIdx === i ? "rgba(200,71,43,.15)" : "var(--overlay)", border: `1.5px solid ${activeIdx === i ? "rgba(200,71,43,.65)" : "var(--line)"}`, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11 }}>
-                            {c.name || `Distribution ${i + 1}`}
-                          </div>
-                        ))}
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 7 }}>
+                          {claims.filter(c => !claimedMap[c.airdrop.toLowerCase()]).length} pending · {claims.filter(c => !!claimedMap[c.airdrop.toLowerCase()]).length} claimed
+                        </div>
+                        <div style={{ display: "flex", gap: 6, overflowX: "auto", flexWrap: "nowrap", paddingBottom: 2 }}>
+                          {[
+                            ...claims.map((c, i) => ({ c, i })).filter(({ c }) => !claimedMap[c.airdrop.toLowerCase()]),
+                            ...claims.map((c, i) => ({ c, i })).filter(({ c }) => !!claimedMap[c.airdrop.toLowerCase()]),
+                          ].map(({ c, i }) => {
+                            const isClaimed = !!claimedMap[c.airdrop.toLowerCase()];
+                            const isActive = activeIdx === i;
+                            return (
+                              <div
+                                key={i}
+                                onClick={() => setActiveIdx(i)}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 5,
+                                  padding: "5px 10px", borderRadius: 3, flexShrink: 0,
+                                  background: isActive ? "rgba(200,71,43,.15)" : "var(--overlay)",
+                                  border: `1.5px solid ${isActive ? "rgba(200,71,43,.65)" : isClaimed ? "transparent" : "var(--line)"}`,
+                                  cursor: "pointer", whiteSpace: "nowrap",
+                                  fontFamily: "var(--font-mono)", fontSize: 11,
+                                  opacity: isClaimed && !isActive ? 0.4 : 1,
+                                  transition: "opacity .2s, border-color .2s",
+                                }}
+                              >
+                                {isClaimed
+                                  ? <span style={{ fontSize: 9, color: "var(--soft)" }}>✓</span>
+                                  : <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
+                                }
+                                {c.name || `Distribution ${i + 1}`}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                     {/* Header + badge */}
