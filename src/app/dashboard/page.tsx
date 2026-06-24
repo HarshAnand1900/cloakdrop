@@ -82,7 +82,6 @@ export default function DashboardPage() {
   const [revokedSet, setRevokedSet] = useState<Set<string>>(new Set());
   const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null);
   const [search, setSearch] = useState("");
-  const [recFilter, setRecFilter] = useState<"all" | "sealed" | "revoked">("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "airdrops" | "disperses">("all");
   const [recSort, setRecSort] = useState<"recent" | "recipients" | "claimed">("recent");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -186,14 +185,10 @@ export default function DashboardPage() {
   }, [dashTab, claimRate]);
 
   const isRevoked = (c: Campaign) => revokedSet.has(c.airdrop.toLowerCase());
-  const sealedCount = campaigns.filter(c => !isRevoked(c)).length;
-  const revokedCount = campaigns.filter(c => isRevoked(c)).length;
 
-  // Filtered + sorted campaigns
+  // Filtered + sorted campaigns (all statuses — type filtering handled in unified table)
   const filtered = campaigns
     .filter(c => {
-      if (recFilter === "sealed" && isRevoked(c)) return false;
-      if (recFilter === "revoked" && !isRevoked(c)) return false;
       if (!search) return true;
       return c.name.toLowerCase().includes(search.toLowerCase()) || c.airdrop.toLowerCase().includes(search.toLowerCase());
     })
