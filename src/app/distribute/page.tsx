@@ -126,9 +126,9 @@ export default function DistributePage() {
   }
 
   const templates = [
-    { label: "Q2 Investor", count: "6 recip · Disperse", method: "disperse" as Method, uc: "investor" as UseCase, list: SAMPLE_LIST },
-    { label: "Monthly Payroll", count: "4 recip · Disperse", method: "disperse" as Method, uc: "team" as UseCase, list: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65, 8500\n0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc, 8500" },
-    { label: "Community Drop", count: "3 recip · Airdrop", method: "airdrop" as Method, uc: "community" as UseCase, list: "0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec, 1000\n0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097, 1000\n0xcd3B766CCDd6AE721141F452C550Ca635964ce71, 1000" },
+    { label: "Q2 Investor", method: "disperse" as Method, uc: "investor" as UseCase, list: SAMPLE_LIST },
+    { label: "Monthly Payroll", method: "disperse" as Method, uc: "team" as UseCase, list: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65, 8500\n0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc, 8500" },
+    { label: "Community Drop", method: "airdrop" as Method, uc: "community" as UseCase, list: "0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec, 1000\n0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097, 1000\n0xcd3B766CCDd6AE721141F452C550Ca635964ce71, 1000" },
   ];
 
   function applyTemplate(i: number) {
@@ -473,7 +473,7 @@ export default function DistributePage() {
                     <div key={i} onClick={() => applyTemplate(i)} style={{ padding: "13px 14px", borderRadius: 3, background: "var(--card)", border: `1.5px solid ${templatePicked === i ? "rgba(200,71,43,.65)" : "var(--line)"}`, cursor: "pointer", transition: "all .2s" }}>
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", letterSpacing: ".1em", marginBottom: 6 }}>TEMPLATE</div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{t.label}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--soft)", marginTop: 3 }}>{t.count}</div>
+                      <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 3, fontFamily: "var(--font-mono)" }}>{t.method === "airdrop" ? "Airdrop" : "Disperse"}</div>
                     </div>
                   ))}
                 </div>
