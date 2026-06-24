@@ -15,9 +15,9 @@ import {
   createConfidentialDisperseClient,
   erc7984OperatorAbi as disperseOperatorAbi,
 } from "@tokenops/sdk/fhe-disperse";
-import { useZamaSDK } from "@zama-fhe/react-sdk";
+import { useZamaSDK, useConfidentialBalance } from "@zama-fhe/react-sdk";
 import { parseRecipients } from "@/lib/csv";
-import { toRaw, shortAddr } from "@/lib/format";
+import { toRaw, shortAddr, fmtToken } from "@/lib/format";
 import { CUSDT, TOKENOPS, OPERATOR_DEADLINE, explorerTx } from "@/lib/constants";
 import type { Campaign, ClaimRecord } from "@/lib/types";
 import { AppShell } from "@/components/AppShell";
@@ -58,6 +58,13 @@ export default function DistributePage() {
   // ── Wizard state ──
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [prevStep, setPrevStep] = useState<number>(1);
+
+  // Sender's confidential cUSDT balance — decrypted at review so we can warn
+  // before a confidential transfer silently clamps to 0 on insufficient funds.
+  const senderBalance = useConfidentialBalance(
+    { tokenAddress: CUSDT.wrapper },
+    { enabled: isConnected && step === 3 },
+  );
 
   // Step 1 config
   const [method, setMethod] = useState<Method>("airdrop");
@@ -715,10 +722,32 @@ export default function DistributePage() {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: walletRejected ? 12 : 30, fontSize: 13, color: "var(--mid)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14, fontSize: 13, color: "var(--mid)" }}>
                   <span style={{ width: 17, height: 17, borderRadius: "50%", border: "1.5px solid var(--green)", color: "var(--green)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, flexShrink: 0 }}>✓</span>
                   Encrypted client-side, ZK-verified before broadcast.
                 </div>
+
+                {/* Sender confidential balance check — confidential transfers silently send 0 if you're short */}
+                {(() => {
+                  const bal = senderBalance.data;
+                  const insufficient = bal !== undefined && bal < total;
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "11px 15px", borderRadius: 4, marginBottom: insufficient ? 12 : (walletRejected ? 12 : 30), background: insufficient ? "rgba(200,71,43,.07)" : "var(--card)", border: `1px solid ${insufficient ? "rgba(200,71,43,.4)" : "var(--line)"}` }}>
+                      <span style={{ fontSize: 12.5, color: "var(--mid)" }}>Your confidential {CUSDT.symbol} balance</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: insufficient ? "var(--accent)" : "var(--ink)" }}>
+                        {senderBalance.isFetching ? "decrypting…" : bal !== undefined ? `${fmtToken(bal)} / ${fmtToken(total)}` : "— (will verify on seal)"}
+                      </span>
+                    </div>
+                  );
+                })()}
+                {senderBalance.data !== undefined && senderBalance.data < total && (
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 15px", background: "rgba(200,71,43,.08)", border: "1.5px solid rgba(200,71,43,.4)", borderRadius: 4, marginBottom: 22 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.3 }}>⚠️</span>
+                    <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55 }}>
+                      <strong>Insufficient balance.</strong> You&apos;re sending {fmtToken(total)} {CUSDT.symbol} but only hold {fmtToken(senderBalance.data)}. Confidential transfers <strong>silently send 0</strong> when you&apos;re short — fund more via the faucet on step 1 before sealing.
+                    </div>
+                  </div>
+                )}
 
                 {/* Wallet rejection retry banner */}
                 {walletRejected && (
@@ -737,7 +766,13 @@ export default function DistributePage() {
                     <div onClick={() => { sotto.addToBatch({ name: `Distribution #${Date.now().toString().slice(-4)}`, count: validCount, token: "cUSDT" }); }} style={{ padding: "14px 18px", borderRadius: 3, border: "1.5px solid var(--line)", color: "var(--mid)", cursor: "pointer", fontSize: 13.5 }}>+ Batch</div>
                     <button
                       className="s-btn"
-                      onClick={() => { setWalletRejected(false); nav(4); setTimeout(() => executeRef.current?.(), 50); }}
+                      onClick={() => {
+                        if (senderBalance.data !== undefined && senderBalance.data < total) {
+                          toast(`Insufficient confidential balance — fund at least ${fmtToken(total)} ${CUSDT.symbol} via the faucet first`, { kind: "error" });
+                          return;
+                        }
+                        setWalletRejected(false); nav(4); setTimeout(() => executeRef.current?.(), 50);
+                      }}
                     >
                       {walletRejected ? "Try again →" : "Encrypt & seal onchain"}
                     </button>

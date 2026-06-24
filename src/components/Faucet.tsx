@@ -7,7 +7,7 @@ import { CUSDT, explorerTx } from "@/lib/constants";
 import { underlyingAbi, wrapperAbi } from "@/lib/abi";
 import { toast } from "./toast";
 
-const MINT_AMOUNT = "10000"; // human units
+const MINT_AMOUNT = "100000"; // human units — covers sample/investor distributions
 
 export function Faucet({ onFunded }: { onFunded?: () => void }) {
   const { address } = useAccount();
