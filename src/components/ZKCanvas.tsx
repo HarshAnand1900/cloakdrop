@@ -151,7 +151,7 @@ export function ZKCanvas({ execProgress, execPhaseIdx, recipients }: Props) {
         drawNode(n.x, n.y, 16, col, n.label, p1active);
       });
       // circuit node
-      drawNode(circuitNode.x, circuitNode.y, 20, p2done ? doneC : (p1done && p2active) ? activeC : idleC, "SNARK", p2active);
+      drawNode(circuitNode.x, circuitNode.y, 20, p2done ? doneC : (p1done && p2active) ? activeC : idleC, "PROOF", p2active);
       // proof node
       drawNode(proofNode.x, proofNode.y, 18, p3done ? doneC : p3active ? activeC : idleC, p3done ? "✓" : "TX", p3active);
 
@@ -160,8 +160,8 @@ export function ZKCanvas({ execProgress, execPhaseIdx, recipients }: Props) {
       ctx.textAlign = "left"; ctx.textBaseline = "bottom";
       ctx.fillStyle = dk ? "rgba(244,234,212,.35)" : "rgba(18,16,13,.28)";
       ctx.fillText("recipients", c0 - 6, inStart - 12);
-      ctx.fillText("FHE circuit", c1 - 10, inStart - 12);
-      ctx.fillText("prover", c2 - 6, inStart - 12);
+      ctx.fillText("FHE encrypt", c1 - 10, inStart - 12);
+      ctx.fillText("input proof", c2 - 6, inStart - 12);
       ctx.fillText("chain", c3 - 5, inStart - 12);
 
       // tag recipient addresses next to input nodes

@@ -429,12 +429,12 @@ export default function ClaimPage() {
       {/* Live status strip — shows distribution-specific stats */}
       {activeClaim && (
         <div style={{ position: "relative", zIndex: 10, borderBottom: "1px solid var(--line)", background: "var(--surface)", backdropFilter: "blur(10px)" }}>
-          <div style={{ maxWidth: 980, margin: "0 auto", padding: "9px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div className="stat-strip" style={{ maxWidth: 980, margin: "0 auto", padding: "9px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "glow 2.2s ease-in-out infinite", flexShrink: 0 }} />
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)" }}>Live · Sepolia testnet</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            <div className="stat-mid" style={{ display: "flex", alignItems: "center", gap: 20 }}>
               {[
                 { val: activeClaim.name, label: "distribution", color: undefined },
                 { val: new Date(activeClaim.startTime * 1000) <= new Date() ? "Open" : "Pending", label: "claim window", color: "#6FAF8E" },
@@ -449,7 +449,7 @@ export default function ClaimPage() {
                 </div>
               ))}
             </div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", color: "var(--soft)" }}>ERC-7984 · ZAMA FHE</div>
+            <div className="stat-end" style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", color: "var(--soft)" }}>ERC-7984 · ZAMA FHE</div>
           </div>
         </div>
       )}

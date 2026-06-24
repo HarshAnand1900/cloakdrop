@@ -524,7 +524,7 @@ export default function DashboardPage() {
                         )}
 
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <div onClick={(e) => { e.stopPropagation(); setQrModal(`${typeof window !== "undefined" ? window.location.origin : ""}/claim?id=${c.airdrop}`); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>QR</div>
+                          <div onClick={(e) => { e.stopPropagation(); setQrModal(`${typeof window !== "undefined" ? window.location.origin : ""}/claim?id=${c.airdrop}`); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Share</div>
                           <div onClick={() => setDetailCampaign(c)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Details</div>
                           {!isRevoked(c) && (
                             <div onClick={(e) => { e.stopPropagation(); setRevokeCampaign(c); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>Revoke</div>
@@ -784,15 +784,20 @@ export default function DashboardPage() {
       {qrModal && (
         <div onClick={() => setQrModal(null)} style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(6,5,4,.55)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fd .2s ease both" }}>
           <div onClick={e => e.stopPropagation()} style={{ width: 360, background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 8, padding: 32, animation: "up .3s cubic-bezier(.22,.85,.2,1) both", boxShadow: "0 40px 80px rgba(0,0,0,.4)", textAlign: "center" }}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 20 }}>Claim QR · share with recipients</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 20 }}>Share claim link · scan or send</div>
             <div style={{ display: "inline-block", padding: 12, background: "var(--ink)", borderRadius: 6, marginBottom: 20 }}>
               <QRCode value={qrModal} size={160} />
             </div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)", background: "var(--input-bg)", border: "1px solid var(--line)", borderRadius: 3, padding: "9px 12px", marginBottom: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{qrModal}</div>
-            <div style={{ display: "flex", gap: 9 }}>
-              <button onClick={() => { navigator.clipboard?.writeText(qrModal); setQrCopied(true); setTimeout(() => setQrCopied(false), 2000); }} style={{ flex: 1, background: "var(--ink)", color: "var(--page-bg)", padding: "11px", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none" }}>
+            <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+              <button onClick={() => { navigator.clipboard?.writeText(qrModal); setQrCopied(true); setTimeout(() => setQrCopied(false), 2000); }} style={{ flex: 1, minWidth: 110, background: "var(--ink)", color: "var(--page-bg)", padding: "11px", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none" }}>
                 {qrCopied ? "✓ Copied" : "Copy link"}
               </button>
+              {typeof navigator !== "undefined" && "share" in navigator && (
+                <button onClick={() => { navigator.share?.({ title: "Sotto · claim your allocation", url: qrModal }).catch(() => {}); }} style={{ flex: 1, minWidth: 110, background: "var(--accent)", color: "#F6F1E6", padding: "11px", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none" }}>
+                  Share…
+                </button>
+              )}
               <button onClick={() => setQrModal(null)} style={{ padding: "11px 16px", border: "1.5px solid var(--line)", color: "var(--mid)", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 12, cursor: "pointer", background: "none" }}>Close</button>
             </div>
           </div>

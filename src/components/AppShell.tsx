@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useAccount, useDisconnect } from "wagmi";
+import { useAccount, useDisconnect, useChainId, useSwitchChain } from "wagmi";
+import { sepolia } from "wagmi/chains";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useRouter, usePathname } from "next/navigation";
 import { useSotto } from "@/context/SottoContext";
@@ -10,6 +11,9 @@ import { shortAddr, timeAgo } from "@/lib/format";
 export function AppShell({ tag }: { tag?: string } = {}) {
   const { address, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
+  const wrongNetwork = isConnected && chainId !== sepolia.id;
   const { disconnect } = useDisconnect();
   const router = useRouter();
   const path = usePathname();
@@ -100,11 +104,22 @@ export function AppShell({ tag }: { tag?: string } = {}) {
           Docs
         </a>
 
-        {/* Network badge */}
-        <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 11px", borderRadius: 999, border: "1px solid var(--line)", transition: "border-color .4s" }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", boxShadow: "0 0 0 0 rgba(111,175,142,.5)", animation: "glow 2.2s ease-in-out infinite" }} />
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".05em", color: "var(--mid)", transition: "color .4s" }}>Sepolia</span>
-        </div>
+        {/* Network badge — turns into a switch prompt on the wrong chain */}
+        {wrongNetwork ? (
+          <div
+            onClick={() => switchChain?.({ chainId: sepolia.id })}
+            title="Switch to Sepolia"
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 11px", borderRadius: 999, border: "1px solid rgba(200,71,43,.5)", background: "rgba(200,71,43,.08)", cursor: "pointer" }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "glow 1.4s ease-in-out infinite" }} />
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".05em", color: "var(--accent)" }}>Wrong network — switch</span>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 11px", borderRadius: 999, border: "1px solid var(--line)", transition: "border-color .4s" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", boxShadow: "0 0 0 0 rgba(111,175,142,.5)", animation: "glow 2.2s ease-in-out infinite" }} />
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".05em", color: "var(--mid)", transition: "color .4s" }}>Sepolia</span>
+          </div>
+        )}
 
         {/* Divider */}
         <div style={{ width: 1, height: 18, background: "var(--line)", transition: "background .4s" }} />

@@ -250,6 +250,13 @@ main, [data-page] { animation: fd .25s ease both; }
   /* Dashboard table: simplified */
   .dash-table-row { grid-template-columns: 1fr auto auto !important; }
   .dash-table-row > :nth-child(n+4) { display: none; }
+  /* Dashboard inline rows: keep name + status + actions only */
+  .dash-row { grid-template-columns: 1fr auto auto !important; gap: 10px !important; }
+  .dash-row > :nth-child(1), .dash-row > :nth-child(3), .dash-row > :nth-child(4), .dash-row > :nth-child(5) { display: none !important; }
+  /* Live stat strips: wrap instead of overflow */
+  .stat-strip { flex-wrap: wrap !important; padding: 9px 20px !important; gap: 8px 14px !important; }
+  .stat-strip .stat-mid { flex-wrap: wrap !important; gap: 8px 14px !important; }
+  .stat-strip .stat-end { display: none !important; }
   /* Landing hero: single column */
   .landing-hero { grid-template-columns: 1fr !important; }
   .landing-hero > :nth-child(2) { display: none; }

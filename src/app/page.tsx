@@ -100,13 +100,13 @@ export default function LandingPage() {
               <span onClick={sotto.toggleMode} style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: landingSoft, cursor: "pointer", letterSpacing: ".08em" }}>{sotto.modeLabel}</span>
               <div onClick={goCreate} style={{ display: "flex", alignItems: "center", gap: 8, background: landingInk, color: landingPage, padding: "10px 20px", borderRadius: 2, fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all .4s" }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "float 2.4s ease-in-out infinite" }} />
-                {isConnected ? "Open app →" : "Connect wallet"}
+                Connect wallet
               </div>
             </div>
           </nav>
 
           {/* Hero */}
-          <section style={{ position: "relative", zIndex: 2, maxWidth: 1320, margin: "0 auto", padding: "22px 52px 78px", display: "grid", gridTemplateColumns: "1.06fr .94fr", gap: 60, alignItems: "center" }}>
+          <section className="landing-hero hero-pad" style={{ position: "relative", zIndex: 2, maxWidth: 1320, margin: "0 auto", padding: "22px 52px 78px", display: "grid", gridTemplateColumns: "1.06fr .94fr", gap: 60, alignItems: "center" }}>
             <div className="anim-up">
               <div style={{ display: "inline-flex", alignItems: "center", gap: 10, fontFamily: "var(--font-mono)", fontSize: 11.5, letterSpacing: ".18em", color: landingSoft, textTransform: "uppercase", marginBottom: 24 }}>
                 <span style={{ width: 18, height: 1, background: "#C8472B" }} />
@@ -207,12 +207,12 @@ export default function LandingPage() {
 
         {/* Live stats bar */}
         <div style={{ borderTop: `1px solid ${landingLine}`, background: landingStripBg, backdropFilter: "blur(10px)" }}>
-          <div style={{ maxWidth: 1320, margin: "0 auto", padding: "9px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div className="stat-strip" style={{ maxWidth: 1320, margin: "0 auto", padding: "9px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "glow 2.2s ease-in-out infinite", flexShrink: 0 }} />
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: landingSoft }}>Live · Sepolia testnet</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            <div className="stat-mid" style={{ display: "flex", alignItems: "center", gap: 20 }}>
               {[
                 { val: liveStats ? String(liveStats.dists) : "—", label: "distributions sealed" },
                 { val: liveStats ? liveStats.recipients.toLocaleString() : "—", label: "recipients" },
@@ -228,13 +228,13 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", color: landingSoft }}>ERC-7984 · ZAMA FHE</div>
+            <div className="stat-end" style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", color: landingSoft }}>ERC-7984 · ZAMA FHE</div>
           </div>
         </div>
 
         {/* Use cases strip */}
         <div style={{ borderTop: `1px solid ${landingLine}`, background: landingStripBg }}>
-          <div style={{ maxWidth: 1320, margin: "0 auto", padding: "0 52px", display: "grid", gridTemplateColumns: "repeat(3,1fr)" }}>
+          <div className="how-grid" style={{ maxWidth: 1320, margin: "0 auto", padding: "0 52px", display: "grid", gridTemplateColumns: "repeat(3,1fr)" }}>
             {[
               { n: "01", title: "Investor distributions", desc: "Cap-table allocations that no block explorer can read.", pr: false },
               { n: "02", title: "Team payouts & vesting", desc: "Salaries no colleague can reverse-engineer.", pr: false },
@@ -257,10 +257,10 @@ export default function LandingPage() {
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".18em", textTransform: "uppercase", color: "#C8472B" }}>How it works</span>
             <span style={{ flex: 1, height: 1, background: landingLine }} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 60 }}>
+          <div className="how-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 60 }}>
             {[
               { n: "01", title: "Upload recipients & amounts", desc: "Paste a CSV or type addresses one per line. Every amount is encrypted locally in your browser using Fully Homomorphic Encryption before it ever leaves your device." },
-              { n: "02", title: "Seal with one confidential transaction", desc: "Sotto generates a zero-knowledge proof that all amounts are valid, then broadcasts a single confidentialDisperse() call. Every sealed amount lands onchain in one block." },
+              { n: "02", title: "Seal with one confidential transaction", desc: "Sotto generates zero-knowledge input proofs that each encrypted amount is well-formed, then broadcasts the confidential transfer. Every sealed amount lands onchain as ciphertext." },
               { n: "03", title: "Recipients declassify their own slice", desc: "Each recipient connects their wallet, proves they're on the list, and decrypts only their allocation — locally, in-browser. No server, no trusted third party." },
             ].map((step) => (
               <div key={step.n}>
@@ -275,7 +275,7 @@ export default function LandingPage() {
 
       {/* Privacy guarantee */}
       <div style={{ borderTop: `1px solid ${landingLine}`, background: landingStripBg }}>
-        <div style={{ maxWidth: 1320, margin: "0 auto", padding: "80px 52px 86px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "start" }}>
+        <div className="how-grid" style={{ maxWidth: 1320, margin: "0 auto", padding: "80px 52px 86px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "start" }}>
           <div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 36 }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".18em", textTransform: "uppercase", color: "#C8472B" }}>The privacy guarantee</span>
@@ -305,7 +305,7 @@ export default function LandingPage() {
 
       {/* Built on */}
       <div style={{ borderTop: `1px solid ${landingLine}`, background: "var(--page-bg)" }}>
-        <div style={{ maxWidth: 1320, margin: "0 auto", padding: "56px 52px", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 32, alignItems: "center" }}>
+        <div className="how-grid" style={{ maxWidth: 1320, margin: "0 auto", padding: "56px 52px", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 32, alignItems: "center" }}>
           {[
             { label: "Built on", title: "Zama Protocol", sub: "FHE infrastructure layer" },
             { label: "Using", title: "TokenOps SDK", sub: "Confidential token operations" },

@@ -447,7 +447,7 @@ export default function DistributePage() {
                 </div>
 
                 {/* Templates */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 9, marginBottom: 26 }}>
+                <div className="how-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 9, marginBottom: 26 }}>
                   {templates.map((t, i) => (
                     <div key={i} onClick={() => applyTemplate(i)} style={{ padding: "13px 14px", borderRadius: 3, background: "var(--card)", border: `1.5px solid ${templatePicked === i ? "rgba(200,71,43,.65)" : "var(--line)"}`, cursor: "pointer", transition: "all .2s" }}>
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", letterSpacing: ".1em", marginBottom: 6 }}>TEMPLATE</div>
@@ -459,7 +459,7 @@ export default function DistributePage() {
 
                 {/* Use case */}
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 13 }}>Use case</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 11, marginBottom: 26 }}>
+                <div className="how-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 11, marginBottom: 26 }}>
                   {([["investor", "↗", "Investor", "Cap-table & fund allocations."], ["team", "⇄", "Team", "Payroll & vesting unlocks."], ["community", "◎", "Community", "Private airdrops at scale."]] as const).map(([key, icon, label, desc]) => (
                     <div key={key} onClick={() => setUseCase(key)} style={{ cursor: "pointer", padding: "20px 16px", borderRadius: 4, background: "var(--card)", border: `1.5px solid ${useCase === key ? "rgba(200,71,43,.65)" : "var(--line)"}`, transition: "all .18s" }}>
                       <div style={{ width: 32, height: 32, borderRadius: "50%", background: useCase === key ? "rgba(200,71,43,.14)" : "rgba(18,16,13,.04)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 13, fontSize: 16 }}>{icon}</div>
@@ -470,7 +470,7 @@ export default function DistributePage() {
                 </div>
 
                 {/* Method + Token */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, marginBottom: 24 }}>
+                <div className="how-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, marginBottom: 24 }}>
                   <div>
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 11, display: "flex", alignItems: "center", gap: 6 }}>
                       Method <InfoTip text="Airdrop: recipients pull their allocation any time during the claim window. Disperse: you push to all recipients at once in a single transaction — faster, no claim step needed." />
@@ -811,7 +811,7 @@ export default function DistributePage() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "16px 18px" }}>
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 12 }}>Cryptography</div>
-                      {[["Scheme", "TFHE-rs"], ["Type", "euint64"], ["Proof system", "Groth16"], ["Token", "cUSDT"], ["Recipients", String(validCount)], ["Network", "Sepolia"]].map(([k, v]) => (
+                      {[["Scheme", "TFHE (tfhe-rs)"], ["Type", "euint64"], ["Input proof", "ZKPoK"], ["Token", "cUSDT"], ["Recipients", String(validCount)], ["Network", "Sepolia"]].map(([k, v]) => (
                         <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontFamily: "var(--font-mono)", fontSize: 11.5 }}>
                           <span style={{ color: "var(--soft)" }}>{k}</span>
                           <span style={{ color: "var(--ink)" }}>{v}</span>
