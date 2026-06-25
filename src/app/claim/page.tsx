@@ -945,14 +945,28 @@ export default function ClaimPage() {
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)", wordBreak: "break-all" }}>{value}</span>
                     </div>
                   ))}
-                  <div style={{ marginTop: 20, fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 12 }}>Input data · <span style={{ color: "var(--accent)" }}>confidentialClaim(bytes32)</span></div>
-                  <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, padding: "14px 16px" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", marginBottom: 8 }}>amount (bytes) — <span style={{ color: "var(--accent)" }}>FHE encrypted · not decodable</span></div>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)", wordBreak: "break-all", lineHeight: 1.7 }}>0xb094c10f3d3b1e2e7a47c3d01208…9f4a</div>
+                  <div style={{ marginTop: 20, fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 12 }}>
+                    Input data · <span style={{ color: "var(--accent)" }}>confidentialClaim(bytes32)</span>
                   </div>
-                  <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: "var(--mid)" }}>
-                    <span style={{ width: 17, height: 17, borderRadius: "50%", border: "1.5px solid var(--green)", color: "var(--green)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, flexShrink: 0 }}>✓</span>
-                    This is exactly what any observer sees. Your amount is sealed — only your key can unlock it.
+                  <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>
+                        euint64 handle — <span style={{ color: "var(--accent)" }}>FHE ciphertext · not decodable</span>
+                      </span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)", border: "1px solid var(--line)", padding: "2px 6px", borderRadius: 2 }}>bytes32</span>
+                    </div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--mid)", wordBreak: "break-all", lineHeight: 1.7 }}>
+                      {activeClaim?.handle ?? "—"}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: "var(--mid)" }}>
+                      <span style={{ width: 17, height: 17, borderRadius: "50%", border: "1.5px solid var(--green)", color: "var(--green)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, flexShrink: 0 }}>✓</span>
+                      This is exactly what any observer sees. Your amount is sealed — only your key can unlock it.
+                    </div>
+                    <a href={explorerTx(claimResult.txHash)} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>
+                      Etherscan ↗
+                    </a>
                   </div>
                 </div>
               </div>
