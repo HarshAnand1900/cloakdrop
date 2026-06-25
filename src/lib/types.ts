@@ -35,6 +35,14 @@ export interface Campaign {
   recipientCount: number;
   /** Creation timestamp (ms). */
   createdAt: number;
+  /**
+   * On-chain contract admin (= session key address for session-signed airdrops,
+   * = admin wallet address for single-recipient airdrops).
+   * Stored so the revoke flow can reconstruct the session account.
+   */
+  signerAddress?: Address;
+  /** Random salt used to derive the session signing key. Re-sign the same message to recover. */
+  signerSalt?: string;
 }
 
 /** Public-facing claim payload returned to a recipient (no other recipients' data). */

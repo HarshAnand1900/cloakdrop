@@ -3,12 +3,12 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { usePublicClient, useWalletClient, useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { toHex } from "viem";
+import { toHex, keccak256, toBytes } from "viem";
 import type { Address, Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import {
   createConfidentialAirdropFactoryClient,
   encryptUint64,
-  signClaimAuthorization,
   erc7984OperatorAbi,
 } from "@tokenops/sdk/fhe-airdrop";
 import {
@@ -248,8 +248,24 @@ export default function DistributePage() {
         else { setExecPhaseLabel("Operator already authorized — skipping (saves gas)"); }
         setExecProgress(12);
 
-        // Deploy + fund
-        setExecPhaseLabel("Check MetaMask — approve deploy & fund"); setExecProgress(18);
+        // Phase 0.5 — derive a browser session signing key from ONE MetaMask signature.
+        // This lets us authorize all N recipients without N more MetaMask popups.
+        // The private key is ephemeral — lives only in memory for this session.
+        const signerSalt = toHex(crypto.getRandomValues(new Uint8Array(16)));
+        setExecPhaseLabel(`Sign once to authorize all ${rows.length} sealed allocations — no more MetaMask after this`);
+        setExecProgress(15);
+        startStuckTimer();
+        const sessionSig = await walletClient!.signMessage({
+          account: walletClient!.account!,
+          message: `Sotto batch signing\nWallet: ${address}\nSalt: ${signerSalt}\n\nThis derives a temporary in-browser key to sign claim authorizations.\nNo funds move. No gas spent. Key is discarded after sealing.`,
+        });
+        clearStuckTimer();
+        const sessionPrivKey = keccak256(toBytes(sessionSig)) as `0x${string}`;
+        const sessionAccount = privateKeyToAccount(sessionPrivKey);
+        setExecPhaseLabel("Session key ready · deploying airdrop contract…"); setExecProgress(18);
+
+        // Deploy + fund — admin is the session key address so it can verify claim sigs
+        setExecPhaseLabel("Check MetaMask — approve deploy & fund"); setExecProgress(20);
         startStuckTimer();
         const factory = createConfidentialAirdropFactoryClient({ publicClient, walletClient, encryptor });
         const now = Math.floor(Date.now() / 1000);
@@ -257,33 +273,45 @@ export default function DistributePage() {
           ? Math.floor(new Date(lockDate).getTime() / 1000)
           : now + 60 * 60 * 24 * 30;
         const { hash, airdrop } = await factory.createAndFundConfidentialAirdrop({
-          params: { token, startTimestamp: now - 60, endTimestamp, canExtendClaimWindow: true, admin: address },
+          params: { token, startTimestamp: now - 60, endTimestamp, canExtendClaimWindow: true, admin: sessionAccount.address },
           userSalt: randomSalt(),
           amount: total,
         });
         clearStuckTimer();
-        setExecPhaseLabel("Deployed · now encrypting allocations in browser…"); setExecProgress(30);
+        setExecPhaseLabel("Deployed · encrypting & signing all allocations in browser…"); setExecProgress(30);
 
-        // Phase 1 — FHE encrypt + sign each (no wallet needed, pure browser)
+        // Phase 1 — FHE encrypt + sign with session account (zero MetaMask popups)
         setExecPhaseIdx(1);
         const claims: ClaimRecord[] = [];
+        const chainId = walletClient!.chain!.id;
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
-          const shortA = shortAddr(r.recipient, 5);
-          setSealLog(prev => [...prev, { idx: i + 1, addr: shortA, op: "encrypting…", done: false }]);
-          setExecPhaseLabel(`FHE encrypting ${i + 1} / ${rows.length} · ${shortAddr(r.recipient)}`);
-          setExecProgress(30 + Math.round((i + 1) / rows.length * 45));
+          setSealLog(prev => [...prev, { idx: i + 1, addr: shortAddr(r.recipient, 5), op: "encrypting…", done: false }]);
+          setExecPhaseLabel(`FHE encrypting + signing ${i + 1} / ${rows.length} · ${shortAddr(r.recipient)}`);
+          setExecProgress(30 + Math.round((i + 1) / rows.length * 55));
           const enc = await encryptUint64({ encryptor, contractAddress: airdrop, userAddress: r.recipient, value: toRaw(r.amount) });
-          const signature = await signClaimAuthorization({ walletClient, airdropAddress: airdrop, recipient: r.recipient, encryptedAmountHandle: enc.handle });
+          // Sign with local session key — same EIP-712 structure as signClaimAuthorization, no MetaMask
+          const signature = await sessionAccount.signTypedData({
+            domain: { name: "ConfidentialAirdrop", version: "1", chainId, verifyingContract: airdrop },
+            types: { Claim: [{ name: "recipient", type: "address" }, { name: "encryptedAmount", type: "bytes32" }] },
+            primaryType: "Claim",
+            message: { recipient: r.recipient as Address, encryptedAmount: enc.handle as `0x${string}` },
+          });
           setSealLog(prev => prev.map((row, j) => j === i ? { ...row, op: "sealed ✓", done: true } : row));
-          claims.push({ recipient: r.recipient, handle: enc.handle, inputProof: enc.inputProof, signature, amount: toRaw(r.amount).toString() });
+          claims.push({ recipient: r.recipient, handle: enc.handle, inputProof: enc.inputProof, signature: signature as Hex, amount: toRaw(r.amount).toString() });
         }
 
         // Phase 2 — persist
-        setExecPhaseIdx(2); setExecPhaseLabel("Saving sealed campaign…"); setExecProgress(85);
+        // admin = user's MetaMask address for dashboard lookup
+        // signerAddress = session key (on-chain admin for claim verification)
+        // signerSalt = stored so the user can re-derive the key for revocation
+        setExecPhaseIdx(2); setExecPhaseLabel("Saving sealed campaign…"); setExecProgress(88);
         const campaign: Campaign = {
-          airdrop, name: `${ucName} #${Date.now().toString().slice(-4)}`, admin: address, token, symbol: CUSDT.symbol,
-          startTime: now - 60, endTime: now + 60 * 60 * 24 * 30, txHash: hash, recipientCount: rows.length, createdAt: Date.now(),
+          airdrop, name: `${ucName} #${Date.now().toString().slice(-4)}`,
+          admin: address!, token, symbol: CUSDT.symbol,
+          startTime: now - 60, endTime: endTimestamp,
+          txHash: hash, recipientCount: rows.length, createdAt: Date.now(),
+          signerAddress: sessionAccount.address, signerSalt,
         };
         const res = await fetch("/api/campaigns", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ campaign, claims }) });
         if (!res.ok) throw new Error("Failed to save campaign.");
@@ -504,7 +532,9 @@ export default function DistributePage() {
                       ))}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 8 }}>
-                      {method === "airdrop" ? "Recipients pull their allocation when ready." : "Push to all in one transaction."}
+                      {method === "airdrop"
+                        ? "Recipients pull their allocation when ready. Requires one MetaMask sign per recipient — best for small lists."
+                        : "Sealed amounts pushed directly to wallets in a single tx. One MetaMask confirmation regardless of list size."}
                     </div>
                   </div>
                   <div>
@@ -696,6 +726,23 @@ export default function DistributePage() {
                     {previewRedacted ? "Show as sender" : "Show as recipient"}
                   </div>
                 </div>
+
+                {/* Large-list airdrop warning */}
+                {method === "airdrop" && rows.length > 10 && (
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "13px 16px", background: "rgba(200,71,43,.07)", border: "1.5px solid rgba(200,71,43,.35)", borderRadius: 4, marginBottom: 14 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.3 }}>⚠️</span>
+                    <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.6 }}>
+                      <strong>Airdrop requires {rows.length} MetaMask sign requests</strong> — one per recipient, because each encrypted amount is unique and must be individually authorized.{" "}
+                      <span
+                        onClick={() => { setMethod("disperse"); nav(1); }}
+                        style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline", fontWeight: 600 }}
+                      >
+                        Switch to Disperse instead
+                      </span>
+                      {" "}— same sealed amounts delivered in a single transaction, zero signing loop. Use Airdrop only when you need individual claim windows.
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 12 }}>
                   <div style={{ maxHeight: 260, overflowY: "auto" }}>

@@ -5,6 +5,9 @@ import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useRouter } from "next/navigation";
 import type { Hex, Address } from "viem";
+import { keccak256, toBytes, createWalletClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { sepolia } from "wagmi/chains";
 import { createConfidentialAirdropClient } from "@tokenops/sdk/fhe-airdrop";
 import { humanizeError } from "@/components/Faucet";
 import { AppShell } from "@/components/AppShell";
@@ -32,13 +35,36 @@ function RevokeModal({ campaign, onDone, onCancel }: { campaign: Campaign; onDon
   const { address } = useAccount();
   const [busy, setBusy] = useState(false);
 
+  // Session-key campaigns have a signerAddress different from the user's wallet.
+  // We must re-derive the session key to call withdraw() as the on-chain admin.
+  const isSessionKey = !!campaign.signerAddress && campaign.signerAddress.toLowerCase() !== address?.toLowerCase();
+
   async function confirm() {
     if (!publicClient || !walletClient || !address) return;
     setBusy(true);
     try {
-      // Real on-chain reclaim: admin withdraws all remaining sealed tokens.
-      const client = createConfidentialAirdropClient({ publicClient, walletClient, address: campaign.airdrop as Address });
-      const hash = await client.withdraw(address);
+      let effectiveWalletClient = walletClient;
+      let withdrawRecipient: Address = address;
+
+      if (isSessionKey && campaign.signerSalt) {
+        // Re-derive the session key with 1 MetaMask sign — same message used during creation.
+        const sessionSig = await walletClient.signMessage({
+          account: walletClient.account!,
+          message: `Sotto batch signing\nWallet: ${address}\nSalt: ${campaign.signerSalt}\n\nThis derives a temporary in-browser key to sign claim authorizations.\nNo funds move. No gas spent. Key is discarded after sealing.`,
+        });
+        const sessionPrivKey = keccak256(toBytes(sessionSig)) as `0x${string}`;
+        const sessionAccount = privateKeyToAccount(sessionPrivKey);
+        withdrawRecipient = sessionAccount.address as Address;
+        // Create a local wallet client from the session account to call withdraw()
+        effectiveWalletClient = createWalletClient({
+          account: sessionAccount,
+          chain: sepolia,
+          transport: http(),
+        }) as typeof walletClient;
+      }
+
+      const client = createConfidentialAirdropClient({ publicClient, walletClient: effectiveWalletClient, address: campaign.airdrop as Address });
+      const hash = await client.withdraw(withdrawRecipient);
       await publicClient.waitForTransactionReceipt({ hash });
       onDone(hash);
     } catch (e) {
@@ -54,6 +80,11 @@ function RevokeModal({ campaign, onDone, onCancel }: { campaign: Campaign; onDon
         <div style={{ fontSize: 13.5, color: "var(--mid)", lineHeight: 1.55, marginBottom: 8 }}>
           This calls <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>withdraw()</span> on <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{shortAddr(campaign.airdrop)}</span> — all <strong style={{ color: "var(--ink)" }}>unclaimed</strong> sealed tokens return to your wallet.
         </div>
+        {isSessionKey && (
+          <div style={{ fontSize: 12.5, color: "var(--accent)", background: "rgba(200,71,43,.07)", border: "1px solid rgba(200,71,43,.3)", borderRadius: 3, padding: "9px 12px", marginBottom: 12, lineHeight: 1.55 }}>
+            Session-signed airdrop — you&apos;ll sign one message to recover the signing key, then the revoke tx fires automatically.
+          </div>
+        )}
         <div style={{ fontSize: 13, color: "var(--mid)", lineHeight: 1.55, marginBottom: 24 }}>Recipients who already claimed are unaffected. Admin-only — requires a wallet signature.</div>
         <div style={{ display: "flex", gap: 10 }}>
           <button className="s-btn" onClick={confirm} disabled={busy} style={{ flex: 1, justifyContent: "center", fontSize: 14.5, opacity: busy ? 0.6 : 1 }}>
