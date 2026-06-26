@@ -4,6 +4,20 @@ const nextConfig: NextConfig = {
   // The Zama + TokenOps SDKs ship modern ESM that Next needs to transpile.
   transpilePackages: ["@tokenops/sdk", "@zama-fhe/sdk", "@zama-fhe/react-sdk"],
 
+  // Required for Zama FHEVM WASM: SharedArrayBuffer needs these two headers.
+  // Without them the WASM threading fails with "browser does not support threads".
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
+        ],
+      },
+    ];
+  },
+
   webpack: (config) => {
     // The FHE relayer runs WASM inside a Web Worker; enable async WASM and
     // stub Node-only builtins so the browser bundle resolves cleanly.
