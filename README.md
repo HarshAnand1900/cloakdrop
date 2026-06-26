@@ -77,7 +77,12 @@ await client.disperse({ token: wrapperAddress, recipients, amounts });
 2. Enter a name and paste CSV: `0xAddress, amount` (one per line)
 3. Choose **Airdrop**, set claim window open/close dates
 4. Review step: pre-distribution balance guard prevents silent zero-transfers (ERC-7984 confidential transfers silently send 0 on insufficient balance — Sotto blocks this before broadcast)
-5. Seal step: `setOperator` (once per token, skipped if already set via `isOperator` check) → `createAndFundConfidentialAirdrop`
+5. Seal step — exactly **2 MetaMask interactions** regardless of recipient count:
+   - `setOperator` (once per token, skipped if already set)
+   - **Sign once** → derives an ephemeral browser session key via `keccak256(signature)`
+   - Airdrop deployed with session key as `admin`
+   - All N claim authorizations signed in-browser with the session key — zero further MetaMask popups
+   - Session key is discarded from memory after sealing
 6. Share the claim link: `cloakdrop.vercel.app/claim?id=<airdropAddress>`
 
 ### Create a disperse (admin)
@@ -202,6 +207,30 @@ src/
   context/
     SottoContext.tsx  # Dark mode + batch distribution state
 ```
+
+---
+
+## Session key signing
+
+Standard browser-based airdrop dApps require one MetaMask signature per recipient (N popups for N recipients). Sotto solves this with deterministic session key derivation:
+
+```ts
+// 1. User signs one message → derive ephemeral private key
+const sessionSig = await walletClient.signMessage({ message: `Sotto batch signing\nWallet: ${address}\nSalt: ${salt}` });
+const sessionKey  = keccak256(toBytes(sessionSig));        // 32-byte private key
+const sessionAcct = privateKeyToAccount(sessionKey);       // viem local account
+
+// 2. Deploy airdrop with session account as admin
+await factory.createAndFundConfidentialAirdrop({ params: { admin: sessionAcct.address, ... } });
+
+// 3. Sign all N claim authorizations locally — no MetaMask
+for (const r of recipients) {
+  signature = await sessionAcct.signTypedData({ /* same EIP-712 as signClaimAuthorization */ });
+}
+// Key is discarded — never stored, never sent anywhere
+```
+
+Result: **2 MetaMask interactions total** (1 sign + 1 deploy tx) for any number of recipients. The salt is stored in the campaign record so the admin can re-derive the same key for revocation.
 
 ---
 
