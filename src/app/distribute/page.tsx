@@ -404,7 +404,7 @@ export default function DistributePage() {
         setExecPhaseIdx(1); setExecPhaseLabel("Check MetaMask — deploy vesting manager"); setExecProgress(20);
         startStuckTimer();
         const vestingFactory = createConfidentialVestingFactoryClient({ publicClient, walletClient });
-        const { hash: managerHash, manager: managerAddress } = await vestingFactory.createManager({
+        const { manager: managerAddress } = await vestingFactory.createManager({
           token, userSalt: randomSalt(),
         });
         clearStuckTimer();
