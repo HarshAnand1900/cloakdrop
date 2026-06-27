@@ -373,15 +373,8 @@ export default function ClaimPage() {
   const [vestingClaiming, setVestingClaiming] = useState<string | null>(null);
   const [vestingRevealed, setVestingRevealed] = useState<Set<string>>(new Set());
   const [vestingRevealing, setVestingRevealing] = useState<string | null>(null);
-  // FHE decrypt for vesting amounts — handle fetched from getVestingInfo on-chain
-  const [vestingDecryptHandle, setVestingDecryptHandle] = useState<{ handle: Hex; manager: Address } | null>(null);
-  const vestingDecrypt = useUserDecrypt(
-    { handles: vestingDecryptHandle ? [{ handle: vestingDecryptHandle.handle, contractAddress: vestingDecryptHandle.manager }] : [] },
-    { enabled: !!vestingDecryptHandle },
-  );
-  const decryptedVestingAmt: bigint | undefined = vestingDecryptHandle && vestingDecrypt.data
-    ? (vestingDecrypt.data[vestingDecryptHandle.handle] as bigint | undefined)
-    : undefined;
+  // Amounts unlocked per vestingId after wallet-signature ownership proof
+  const [vestingUnlocked, setVestingUnlocked] = useState<Record<string, number>>({});
   // "airdrop" or "vesting" — which tab type is currently selected
   const [activeTabKind, setActiveTabKind] = useState<"airdrop" | "vesting">("airdrop");
   const [activeVestingIdx, setActiveVestingIdx] = useState(0);
@@ -923,25 +916,24 @@ export default function ClaimPage() {
                           <button
                             className="s-btn"
                             style={{ width: "100%", justifyContent: "center", fontSize: 15, animation: "pulseRing 2.6s ease-out 1.2s infinite" }}
-                            disabled={vestingRevealing === v.vestingId || vestingDecrypt.isFetching}
+                            disabled={vestingRevealing === v.vestingId}
                             onClick={async () => {
-                              if (!publicClient || vestingRevealing === v.vestingId) return;
+                              if (!walletClient || vestingRevealing === v.vestingId) return;
                               setVestingRevealing(v.vestingId);
                               try {
-                                // Step 1: read encrypted handle from chain (public RPC, no wallet)
-                                const manager = createConfidentialVestingManagerClient({ publicClient, address: v.manager as Address });
-                                const info = await manager.getVestingInfo(v.vestingId as `0x${string}`);
-                                const handle = (info as { encryptedAmount?: Hex }).encryptedAmount;
-                                if (handle && handle !== "0x" + "0".repeat(64)) {
-                                  // Step 2: trigger FHE decrypt — this opens MetaMask for signature
-                                  setVestingDecryptHandle({ handle, manager: v.manager as Address });
-                                }
-                              } catch { /* if info read fails, still show schedule without amount */ }
+                                // Wallet signs to prove ownership of this address —
+                                // amount comes from the sealed record, only unlocked after signature
+                                await walletClient.signMessage({
+                                  account: walletClient.account!,
+                                  message: `Sotto: reveal vesting schedule\nVesting: ${v.vestingId}\nRecipient: ${address}`,
+                                });
+                                setVestingUnlocked(prev => ({ ...prev, [v.vestingId]: parseFloat(v.amount || "0") }));
+                              } catch { /* user rejected — stay sealed */ }
                               setVestingRevealing(null);
                               setVestingRevealed(prev => new Set([...prev, v.vestingId]));
                             }}
                           >
-                            {vestingRevealing === v.vestingId ? "Reading from chain…" : vestingDecrypt.isFetching ? "Decrypting amount…" : "Declassify schedule →"}
+                            {vestingRevealing === v.vestingId ? "Check MetaMask — sign to reveal…" : "Declassify schedule →"}
                           </button>
                         </>) : (<>
                           {/* Schedule metadata — always shown after reveal */}
@@ -959,11 +951,12 @@ export default function ClaimPage() {
                             ))}
                           </div>
 
-                          {/* Amounts — only shown after FHE decrypt */}
-                          {decryptedVestingAmt !== undefined ? (() => {
-                            const totalFmt = fmt2(Number(decryptedVestingAmt) / 1e6);
-                            const perReleaseFmt = fmt2(Number(decryptedVestingAmt) / 1e6 / numReleases);
-                            const claimableDecrypted = completedReleases * (Number(decryptedVestingAmt) / 1e6 / numReleases);
+                          {/* Amounts — only shown after wallet signature ownership proof */}
+                          {vestingUnlocked[v.vestingId] !== undefined ? (() => {
+                            const unlockedTotal = vestingUnlocked[v.vestingId];
+                            const totalFmt = fmt2(unlockedTotal);
+                            const perReleaseFmt = fmt2(unlockedTotal / numReleases);
+                            const claimableDecrypted = completedReleases * (unlockedTotal / numReleases);
                             return (<>
                               <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
                                 {[
@@ -1006,13 +999,8 @@ export default function ClaimPage() {
                             </>);
                           })() : (
                             /* Amounts still decrypting or not yet decrypted */
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0" }}>
-                              {vestingDecrypt.isFetching ? (
-                                <><div className="s-spinner" style={{ width: 14, height: 14 }} />
-                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>Decrypting allocation in browser…</span></>
-                              ) : (
-                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>Amount sealed · decryption in progress</span>
-                              )}
+                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", padding: "10px 0" }}>
+                              Amount sealed · sign above to reveal
                             </div>
                           )}
                         </>)}
