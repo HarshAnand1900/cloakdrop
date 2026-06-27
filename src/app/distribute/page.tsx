@@ -646,37 +646,58 @@ export default function DistributePage() {
                   </div>
                 </div>
 
-                {/* Claim window */}
-                <div style={{ padding: "16px 18px", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 3, marginBottom: 38 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 3, display: "flex", alignItems: "center", gap: 6 }}>
-                    Claim window <InfoTip text="Control when recipients can start and stop claiming. Leave blank for 'open immediately, expires in 30 days'. Use Opens for vesting start dates." />
-                  </div>
-                  <div style={{ fontSize: 12.5, color: "var(--mid)", marginBottom: 14 }}>Optional. Leave blank for immediate open · 30-day expiry.</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    <div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 6 }}>Opens</div>
-                      <input
-                        type="datetime-local"
-                        value={claimOpenDate}
-                        onChange={e => setClaimOpenDate(e.target.value)}
-                        className="s-input"
-                        style={{ width: "100%" }}
-                      />
-                      <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 4 }}>Default: now (immediately)</div>
+                {/* Claim window (airdrop/disperse) OR Vesting schedule (vesting) */}
+                {method === "vesting" ? (
+                  <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 4, padding: "20px 20px 16px", marginBottom: 38 }}>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 14 }}>Vesting schedule</div>
+                    <div style={{ display: "flex", gap: 18, marginBottom: 16 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, color: "var(--mid)", marginBottom: 6 }}>Cliff · {cliffMonths}mo cliff</div>
+                        <input type="range" min={0} max={18} step={1} value={cliffMonths} onChange={e => setCliffMonths(parseInt(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, color: "var(--mid)", marginBottom: 6 }}>Duration · {vestingDuration}mo total</div>
+                        <input type="range" min={6} max={48} step={3} value={vestingDuration} onChange={e => setVestingDuration(parseInt(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 6 }}>Expires</div>
-                      <input
-                        type="datetime-local"
-                        value={claimCloseDate}
-                        onChange={e => setClaimCloseDate(e.target.value)}
-                        className="s-input"
-                        style={{ width: "100%" }}
-                      />
-                      <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 4 }}>Default: 30 days from now</div>
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, color: "var(--mid)", marginBottom: 6 }}>Release interval · every {releaseIntervalDays}d</div>
+                      <input type="range" min={1} max={90} step={1} value={releaseIntervalDays} onChange={e => setReleaseIntervalDays(parseInt(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)", marginTop: 3 }}>
+                        <span>Daily</span><span>Weekly (7d)</span><span>Monthly (30d)</span><span>Quarterly (90d)</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 72, overflow: "hidden", marginBottom: 6 }}>
+                      {vestingBars.map((b, i) => (
+                        <div key={i} style={{ flex: 1, minWidth: 3, background: b.isCliff ? "var(--line)" : "var(--accent)", opacity: parseFloat(b.op), borderRadius: "1px 1px 0 0", height: b.h, transition: "height .4s cubic-bezier(.22,.85,.2,1)" }} />
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)" }}>Month 1</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--accent)", letterSpacing: ".06em" }}>{cliffMonths > 0 ? "cliff → linear unlock" : "linear unlock from day 1"}</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)" }}>{vestingDuration}mo total</span>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div style={{ padding: "16px 18px", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 3, marginBottom: 38 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 3, display: "flex", alignItems: "center", gap: 6 }}>
+                      Claim window <InfoTip text="Control when recipients can start and stop claiming. Leave blank for 'open immediately, expires in 30 days'." />
+                    </div>
+                    <div style={{ fontSize: 12.5, color: "var(--mid)", marginBottom: 14 }}>Optional. Leave blank for immediate open · 30-day expiry.</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 6 }}>Opens</div>
+                        <input type="datetime-local" value={claimOpenDate} onChange={e => setClaimOpenDate(e.target.value)} className="s-input" style={{ width: "100%" }} />
+                        <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 4 }}>Default: now (immediately)</div>
+                      </div>
+                      <div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 6 }}>Expires</div>
+                        <input type="datetime-local" value={claimCloseDate} onChange={e => setClaimCloseDate(e.target.value)} className="s-input" style={{ width: "100%" }} />
+                        <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 4 }}>Default: 30 days from now</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <button className="s-btn" onClick={() => nav(2)} style={{ gap: 10 }}>
                   Add recipients <span style={{ fontFamily: "var(--font-mono)" }}>→</span>
@@ -746,67 +767,25 @@ export default function DistributePage() {
                   </div>
                 )}
 
-                <div style={{ display: "flex", gap: 9, marginBottom: 20 }}>
+                <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
                   <div onClick={sotto.openAddrBook} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 9, background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 3, cursor: "pointer", fontSize: 12.5, color: "var(--mid)" }}>
                     ◧ Address book
                   </div>
-                  <div onClick={() => setVestingEnabled(!vestingEnabled)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: 9, background: vestingEnabled ? "rgba(200,71,43,.12)" : "var(--card)", border: `1.5px solid ${vestingEnabled ? "rgba(200,71,43,.55)" : "var(--line)"}`, borderRadius: 3, cursor: "pointer", fontSize: 12.5, color: vestingEnabled ? "var(--accent)" : "var(--mid)" }}>
-                    ◑ Vesting schedule
-                  </div>
                 </div>
 
-                {/* Vesting schedule */}
-                {vestingEnabled && (
-                  <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 4, padding: "20px 20px 14px", marginBottom: 20, animation: "fd .22s ease both" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 14 }}>Vesting schedule</div>
-                    <div style={{ display: "flex", gap: 18, marginBottom: 16 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 12, color: "var(--mid)", marginBottom: 6 }}>Cliff · {cliffMonths}mo cliff</div>
-                        <input type="range" min={0} max={18} step={1} value={cliffMonths} onChange={e => {
-                          const cliff = parseInt(e.target.value);
-                          setCliffMonths(cliff);
-                          // Auto-set claim opens date to cliff end
-                          const opens = new Date();
-                          opens.setMonth(opens.getMonth() + cliff);
-                          setClaimOpenDate(opens.toISOString().slice(0, 16));
-                        }} style={{ width: "100%", accentColor: "var(--accent)" }} />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 12, color: "var(--mid)", marginBottom: 6 }}>Duration · {vestingDuration}mo total</div>
-                        <input type="range" min={6} max={48} step={3} value={vestingDuration} onChange={e => {
-                          const dur = parseInt(e.target.value);
-                          setVestingDuration(dur);
-                          // Auto-set claim expires date to vesting end
-                          const expires = new Date();
-                          expires.setMonth(expires.getMonth() + dur);
-                          setClaimCloseDate(expires.toISOString().slice(0, 16));
-                        }} style={{ width: "100%", accentColor: "var(--accent)" }} />
-                      </div>
+                {/* Vesting summary banner (method set in step 1) */}
+                {method === "vesting" && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 14px", background: "rgba(200,71,43,.07)", border: "1.5px solid rgba(200,71,43,.35)", borderRadius: 3, marginBottom: 14, animation: "fd .2s ease both" }}>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>
+                      ◑ Vesting: {cliffMonths > 0 ? `${cliffMonths}mo cliff →` : ""} unlocks every {releaseIntervalDays}d over {vestingDuration}mo
                     </div>
-                    {method === "vesting" && (
-                      <div style={{ marginBottom: 14 }}>
-                        <div style={{ fontSize: 12, color: "var(--mid)", marginBottom: 6 }}>Release interval · every {releaseIntervalDays}d</div>
-                        <input type="range" min={1} max={90} step={1} value={releaseIntervalDays} onChange={e => setReleaseIntervalDays(parseInt(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
-                        <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)", marginTop: 3 }}>
-                          <span>Daily</span><span>Weekly (7d)</span><span>Monthly (30d)</span><span>Quarterly (90d)</span>
-                        </div>
-                      </div>
-                    )}
-                    <div style={{ fontSize: 11.5, color: "var(--soft)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
-                      {method === "vesting"
-                        ? `↳ ${cliffMonths}mo cliff → unlocks every ${releaseIntervalDays}d over ${vestingDuration}mo total`
-                        : `↳ Sets claim window: opens ${cliffMonths > 0 ? `${cliffMonths}mo from now` : "immediately"} · expires ${vestingDuration}mo from now`}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 80, overflow: "hidden" }}>
-                      {vestingBars.map((b, i) => (
-                        <div key={i} style={{ flex: 1, minWidth: 3, background: b.isCliff ? "var(--line)" : "var(--accent)", opacity: parseFloat(b.op), borderRadius: "1px 1px 0 0", height: b.h, transition: "height .4s cubic-bezier(.22,.85,.2,1)" }} />
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7 }}>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)" }}>Month 1</span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--accent)", letterSpacing: ".06em" }}>cliff → linear unlock</span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)" }}>{vestingDuration}mo total</span>
-                    </div>
+                    <div onClick={() => { nav(1); }} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", cursor: "pointer", textDecoration: "underline" }}>Edit ←</div>
+                  </div>
+                )}
+
+                {/* (Vesting schedule is configured in Step 1 — see summary banner above) */}
+                {false && (
+                  <div>
                   </div>
                 )}
 
@@ -839,12 +818,12 @@ export default function DistributePage() {
                         <span style={{ fontSize: 13.5, color: "var(--mid)" }}>Save current list</span>
                       </div>
                       {sotto.addressBook.map(entry => (
-                        <div key={entry.id} onClick={() => { sotto.loadFromBook(entry.list); }} style={{ padding: "15px 16px", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 3, cursor: "pointer", marginBottom: 8 }}>
+                        <div key={entry.id} onClick={() => { sotto.loadFromBook(entry.list); toast(`Loaded "${entry.name}" — ${entry.count} addresses`, { kind: "success" }); }} style={{ padding: "15px 16px", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 3, cursor: "pointer", marginBottom: 8, transition: "border-color .2s" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{entry.name}</div>
                             <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--soft)" }}>{entry.count} addrs</div>
                           </div>
-                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", letterSpacing: ".08em" }}>LOAD →</div>
+                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", letterSpacing: ".08em" }}>LOAD INTO LIST →</div>
                         </div>
                       ))}
                     </div>

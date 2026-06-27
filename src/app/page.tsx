@@ -95,15 +95,42 @@ export default function LandingPage() {
               </div>
               <span style={{ fontFamily: "var(--font-serif)", fontSize: 24, color: landingInk }}>Sotto</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 30 }}>
-              <span onClick={() => router.push("/docs")} style={{ fontSize: 14, color: landingMid, cursor: "pointer" }}>Docs</span>
-              <span onClick={sotto.toggleMode} style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: landingSoft, cursor: "pointer", letterSpacing: ".08em" }}>{sotto.modeLabel}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <span onClick={() => router.push("/docs")} style={{ fontSize: 14, color: landingMid, cursor: "pointer", padding: "8px 14px", borderRadius: 2, background: isDark ? "rgba(16,12,9,.55)" : "rgba(247,243,233,.65)", backdropFilter: "blur(8px)", border: `1px solid ${landingLine}` }}>Docs</span>
+              <span onClick={sotto.toggleMode} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: landingMid, cursor: "pointer", letterSpacing: ".08em", padding: "8px 14px", borderRadius: 2, background: isDark ? "rgba(16,12,9,.55)" : "rgba(247,243,233,.65)", backdropFilter: "blur(8px)", border: `1px solid ${landingLine}` }}>{sotto.modeLabel}</span>
               <div onClick={goCreate} style={{ display: "flex", alignItems: "center", gap: 8, background: landingInk, color: landingPage, padding: "10px 20px", borderRadius: 2, fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all .4s" }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "float 2.4s ease-in-out infinite" }} />
                 Connect wallet
               </div>
             </div>
           </nav>
+
+          {/* Stats strip — below nav */}
+          <div style={{ borderBottom: `1px solid ${landingLine}`, background: isDark ? "rgba(16,12,9,.4)" : "rgba(247,243,233,.5)", backdropFilter: "blur(8px)", position: "relative", zIndex: 5 }}>
+            <div className="stat-strip" style={{ maxWidth: 1320, margin: "0 auto", padding: "7px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E", animation: "glow 2.2s ease-in-out infinite", flexShrink: 0 }} />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: ".14em", textTransform: "uppercase", color: landingSoft }}>Live · Sepolia</span>
+              </div>
+              <div className="stat-mid" style={{ display: "flex", alignItems: "center", gap: 18 }}>
+                {[
+                  { val: (liveStats && liveStats.dists > 0) ? String(liveStats.dists) : "—", label: "distributions sealed" },
+                  { val: (liveStats && liveStats.recipients > 0) ? liveStats.recipients.toLocaleString() : "—", label: "recipients" },
+                  { val: "euint64", label: "encryption" },
+                  { val: "ERC-7984", label: "standard" },
+                ].map((item, i, arr) => (
+                  <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 18, whiteSpace: "nowrap" }}>
+                    <div>
+                      <span style={{ fontFamily: "var(--font-serif)", fontSize: 14, color: landingInk }}>{item.val}</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: landingMid, marginLeft: 5, letterSpacing: ".04em" }}>{item.label}</span>
+                    </div>
+                    {i < arr.length - 1 && <div style={{ width: 1, height: 10, background: landingLine, flexShrink: 0 }} />}
+                  </div>
+                ))}
+              </div>
+              <div className="stat-end" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: ".1em", color: landingSoft }}>ZAMA FHE</div>
+            </div>
+          </div>
 
           {/* Hero */}
           <section className="landing-hero hero-pad" style={{ position: "relative", zIndex: 2, maxWidth: 1320, margin: "0 auto", padding: "22px 52px 78px", display: "grid", gridTemplateColumns: "1.06fr .94fr", gap: 60, alignItems: "center" }}>
@@ -118,7 +145,8 @@ export default function LandingPage() {
                 <span
                   style={{ position: "relative", display: "inline-block", verticalAlign: "baseline" }}
                   onMouseEnter={() => setNothingRevealed(true)}
-                  onClick={() => setNothingRevealed(true)}
+                  onMouseLeave={() => setNothingRevealed(false)}
+                  onClick={() => setNothingRevealed(v => !v)}
                 >
                   <em style={{ fontStyle: "italic", color: "#C8472B" }}>nothing.</em>
                   {/* Censorship bar — hover/click to reveal */}
@@ -208,32 +236,6 @@ export default function LandingPage() {
 
         </div>
 
-        {/* Live stats bar */}
-        <div style={{ borderTop: `1px solid ${landingLine}`, background: landingStripBg, backdropFilter: "blur(10px)" }}>
-          <div className="stat-strip" style={{ maxWidth: 1320, margin: "0 auto", padding: "9px 52px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6FAF8E", animation: "glow 2.2s ease-in-out infinite", flexShrink: 0 }} />
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: landingSoft }}>Live · Sepolia testnet</span>
-            </div>
-            <div className="stat-mid" style={{ display: "flex", alignItems: "center", gap: 20 }}>
-              {[
-                { val: liveStats ? String(liveStats.dists) : "—", label: "distributions sealed" },
-                { val: liveStats ? liveStats.recipients.toLocaleString() : "—", label: "recipients" },
-                { val: "euint64", label: "encryption type" },
-                { val: "ERC-7984", label: "standard" },
-              ].map((item, i, arr) => (
-                <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 20, whiteSpace: "nowrap" }}>
-                  <div>
-                    <span style={{ fontFamily: "var(--font-serif)", fontSize: 16, color: landingInk }}>{item.val}</span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: landingMid, marginLeft: 5, letterSpacing: ".04em" }}>{item.label}</span>
-                  </div>
-                  {i < arr.length - 1 && <div style={{ width: 1, height: 12, background: landingLine, flexShrink: 0 }} />}
-                </div>
-              ))}
-            </div>
-            <div className="stat-end" style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", color: landingSoft }}>ERC-7984 · ZAMA FHE</div>
-          </div>
-        </div>
 
         {/* Use cases strip */}
         <div style={{ borderTop: `1px solid ${landingLine}`, background: landingStripBg }}>
