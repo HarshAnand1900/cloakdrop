@@ -69,8 +69,8 @@ export function SottoProvider({ children }: { children: ReactNode }) {
   const [showBatch, setShowBatch] = useState(false);
   const [showRevoke, setShowRevoke] = useState(false);
   const [addressBook, setAddressBook] = useState<AddressBookEntry[]>([
-    { id: 1, name: "Q2 Investors", count: 6, list: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8, 12500\n0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC, 8200\n0x90F79bf6EB2c4f870365E785982E1f101E93b906, 21000" },
-    { id: 2, name: "Core Team", count: 4, list: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65, 8500\n0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc, 7200" },
+    { id: 1, name: "Q2 Investors", count: 3, list: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8, 500\n0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC, 300\n0x90F79bf6EB2c4f870365E785982E1f101E93b906, 250" },
+    { id: 2, name: "Core Team", count: 2, list: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65, 400\n0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc, 350" },
   ]);
   const [batchQueue, setBatchQueue] = useState<BatchItem[]>([]);
   const [loadedList, setLoadedList] = useState<string | null>(null);

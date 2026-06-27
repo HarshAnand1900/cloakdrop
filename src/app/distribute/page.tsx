@@ -35,7 +35,7 @@ type Method = "airdrop" | "disperse";
 type UseCase = "investor" | "team" | "community";
 
 const SAMPLE_LIST =
-  "0x70997970C51812dc3A010C7d01b50e0d17dc79C8, 12500\n0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC, 8200\n0x90F79bf6EB2c4f870365E785982E1f101E93b906, 21000\n0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65, 9750";
+  "0x70997970C51812dc3A010C7d01b50e0d17dc79C8, 500\n0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC, 300\n0x90F79bf6EB2c4f870365E785982E1f101E93b906, 250\n0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65, 450\n0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc, 200";
 
 function randomSalt(): Hex {
   const b = new Uint8Array(32);
@@ -69,8 +69,8 @@ export default function DistributePage() {
   // Step 1 config
   const [method, setMethod] = useState<Method>("airdrop");
   const [useCase, setUseCase] = useState<UseCase>("investor");
-  const [timeLock, setTimeLock] = useState(false);
-  const [lockDate, setLockDate] = useState("");
+  const [claimOpenDate, setClaimOpenDate] = useState("");   // datetime-local → startTimestamp
+  const [claimCloseDate, setClaimCloseDate] = useState(""); // datetime-local → endTimestamp
   const [templatePicked, setTemplatePicked] = useState<number | null>(null);
 
   // Step 2 recipients
@@ -127,8 +127,8 @@ export default function DistributePage() {
 
   const templates = [
     { label: "Q2 Investor", method: "disperse" as Method, uc: "investor" as UseCase, list: SAMPLE_LIST },
-    { label: "Monthly Payroll", method: "disperse" as Method, uc: "team" as UseCase, list: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65, 8500\n0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc, 8500" },
-    { label: "Community Drop", method: "airdrop" as Method, uc: "community" as UseCase, list: "0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec, 1000\n0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097, 1000\n0xcd3B766CCDd6AE721141F452C550Ca635964ce71, 1000" },
+    { label: "Monthly Payroll", method: "disperse" as Method, uc: "team" as UseCase, list: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65, 400\n0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc, 350" },
+    { label: "Community Drop", method: "airdrop" as Method, uc: "community" as UseCase, list: "0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec, 100\n0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097, 100\n0xcd3B766CCDd6AE721141F452C550Ca635964ce71, 100" },
   ];
 
   function applyTemplate(i: number) {
@@ -269,11 +269,14 @@ export default function DistributePage() {
         startStuckTimer();
         const factory = createConfidentialAirdropFactoryClient({ publicClient, walletClient, encryptor });
         const now = Math.floor(Date.now() / 1000);
-        const endTimestamp = timeLock && lockDate
-          ? Math.floor(new Date(lockDate).getTime() / 1000)
-          : now + 60 * 60 * 24 * 30;
+        const startTimestamp = claimOpenDate
+          ? Math.floor(new Date(claimOpenDate).getTime() / 1000)
+          : now - 60; // default: open immediately
+        const endTimestamp = claimCloseDate
+          ? Math.floor(new Date(claimCloseDate).getTime() / 1000)
+          : now + 60 * 60 * 24 * 30; // default: 30 days
         const { hash, airdrop } = await factory.createAndFundConfidentialAirdrop({
-          params: { token, startTimestamp: now - 60, endTimestamp, canExtendClaimWindow: true, admin: sessionAccount.address },
+          params: { token, startTimestamp, endTimestamp, canExtendClaimWindow: true, admin: sessionAccount.address },
           userSalt: randomSalt(),
           amount: total,
         });
@@ -309,7 +312,7 @@ export default function DistributePage() {
         const campaign: Campaign = {
           airdrop, name: `${ucName} #${Date.now().toString().slice(-4)}`,
           admin: address!, token, symbol: CUSDT.symbol,
-          startTime: now - 60, endTime: endTimestamp,
+          startTime: startTimestamp, endTime: endTimestamp,
           txHash: hash, recipientCount: rows.length, createdAt: Date.now(),
           signerAddress: sessionAccount.address, signerSalt,
         };
@@ -392,7 +395,7 @@ export default function DistributePage() {
       nav(3);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, walletClient, publicClient, zama, method, timeLock, lockDate, rows, total]);
+  }, [address, walletClient, publicClient, zama, method, claimOpenDate, claimCloseDate, rows, total]);
 
   executeRef.current = execute;
 
@@ -546,25 +549,36 @@ export default function DistributePage() {
                   </div>
                 </div>
 
-                {/* Time lock */}
+                {/* Claim window */}
                 <div style={{ padding: "16px 18px", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 3, marginBottom: 38 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 3, display: "flex", alignItems: "center", gap: 6 }}>
+                    Claim window <InfoTip text="Control when recipients can start and stop claiming. Leave blank for 'open immediately, expires in 30 days'. Use Opens for vesting start dates." />
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "var(--mid)", marginBottom: 14 }}>Optional. Leave blank for immediate open · 30-day expiry.</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>
-                        Time lock <InfoTip text="Prevents recipients from claiming before a date you set. Useful for vesting start dates or scheduled payroll. The allocation is still sealed on-chain immediately." />
-                      </div>
-                      <div style={{ fontSize: 12.5, color: "var(--mid)", marginTop: 3 }}>Prevent claims before a set date</div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 6 }}>Opens</div>
+                      <input
+                        type="datetime-local"
+                        value={claimOpenDate}
+                        onChange={e => setClaimOpenDate(e.target.value)}
+                        className="s-input"
+                        style={{ width: "100%" }}
+                      />
+                      <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 4 }}>Default: now (immediately)</div>
                     </div>
-                    <div onClick={() => setTimeLock(!timeLock)} className="s-toggle" style={{ background: timeLock ? "var(--accent)" : "var(--soft)" }}>
-                      <div className="s-toggle-knob" style={{ left: timeLock ? 21 : 3 }} />
+                    <div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 6 }}>Expires</div>
+                      <input
+                        type="datetime-local"
+                        value={claimCloseDate}
+                        onChange={e => setClaimCloseDate(e.target.value)}
+                        className="s-input"
+                        style={{ width: "100%" }}
+                      />
+                      <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 4 }}>Default: 30 days from now</div>
                     </div>
                   </div>
-                  {timeLock && (
-                    <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12, animation: "fd .2s ease both" }}>
-                      <input type="date" value={lockDate} onChange={e => setLockDate(e.target.value)} className="s-input" style={{ flex: 1 }} />
-                      {lockDate && <div style={{ fontSize: 13, color: "var(--accent)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>{new Date(lockDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</div>}
-                    </div>
-                  )}
                 </div>
 
                 <button className="s-btn" onClick={() => nav(2)} style={{ gap: 10 }}>
