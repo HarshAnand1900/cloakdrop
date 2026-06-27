@@ -368,10 +368,13 @@ export default function ClaimPage() {
   const [disperses, setDisperses] = useState<{ txHash: string; name: string; symbol: string; createdAt: number }[]>([]);
   const [disperseLoading, setDisperseLoading] = useState(true);
 
-  // Vesting schedules for this recipient
+  // Vesting schedules — merged into the same allocation tabs as airdrops
   const [vestings, setVestings] = useState<import("@/lib/types").VestingRecord[]>([]);
   const [vestingClaiming, setVestingClaiming] = useState<string | null>(null);
   const [vestingRevealed, setVestingRevealed] = useState<Set<string>>(new Set());
+  // "airdrop" or "vesting" — which tab type is currently selected
+  const [activeTabKind, setActiveTabKind] = useState<"airdrop" | "vesting">("airdrop");
+  const [activeVestingIdx, setActiveVestingIdx] = useState(0);
 
   // Step 2 inner state (lifted so step rail shows correctly)
   const [innerPhase, setInnerPhase] = useState<InnerPhase>("idle");
@@ -391,9 +394,13 @@ export default function ClaimPage() {
           const idx = all.findIndex(c => c.airdrop.toLowerCase() === preselectedId);
           if (idx >= 0) { setActiveIdx(idx); setClaimStep(2); }
         } else if (all.length > 0) {
-          // Default to the most recently created claim (highest startTime)
           const latestIdx = all.reduce((best, c, i) => c.startTime > all[best].startTime ? i : best, 0);
           setActiveIdx(latestIdx);
+          setActiveTabKind("airdrop");
+        } else {
+          // No claims — if vestings exist, default to first vesting tab
+          setActiveTabKind("vesting");
+          setActiveVestingIdx(0);
         }
       })
       .catch(() => setClaims([]))
@@ -759,90 +766,197 @@ export default function ClaimPage() {
                 </div>
               )}
 
-              {/* Eligible: 2-column layout */}
-              {!checking && claims.length > 0 && claimView === "allocation" && (
+              {/* Eligible: 2-column layout — shows for airdrops OR vestings */}
+              {!checking && (claims.length > 0 || vestings.length > 0) && claimView === "allocation" && (
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: 16, alignItems: "start", marginBottom: 30 }} className="airdrop-grid">
                   {/* LEFT: allocation card */}
                   <div style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 6, padding: "24px 26px" }}>
-                    {/* Multi-claim tabs — pending as pills, claimed collapsed */}
-                    {claims.length > 1 && (() => {
+                    {/* Unified tabs: pending airdrops + vesting schedules */}
+                    {(claims.length > 1 || vestings.length > 0) && (() => {
                       const pendingItems = claims.map((c, i) => ({ c, i })).filter(({ c }) => !claimedMap[c.airdrop.toLowerCase()]);
                       const claimedItems = claims.map((c, i) => ({ c, i })).filter(({ c }) => !!claimedMap[c.airdrop.toLowerCase()]);
                       const activeIsClaimed = activeClaim ? !!claimedMap[activeClaim.airdrop.toLowerCase()] : false;
                       return (
                         <div style={{ marginBottom: 16 }}>
                           <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", alignItems: "center", overflowX: "auto", paddingBottom: 2 }}>
-                            {/* Pending claims — individual pills */}
                             {pendingItems.map(({ c, i }) => (
-                              <div key={i} onClick={() => setActiveIdx(i)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 3, flexShrink: 0, background: activeIdx === i ? "rgba(200,71,43,.15)" : "var(--overlay)", border: `1.5px solid ${activeIdx === i ? "rgba(200,71,43,.65)" : "var(--line)"}`, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11, transition: "all .2s" }}>
+                              <div key={i} onClick={() => { setActiveIdx(i); setActiveTabKind("airdrop"); }} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 3, flexShrink: 0, background: activeTabKind === "airdrop" && activeIdx === i ? "rgba(200,71,43,.15)" : "var(--overlay)", border: `1.5px solid ${activeTabKind === "airdrop" && activeIdx === i ? "rgba(200,71,43,.65)" : "var(--line)"}`, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11, transition: "all .2s" }}>
                                 <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
                                 {c.name || `Distribution ${i + 1}`}
                               </div>
                             ))}
-                            {/* Claimed — single collapsed chip */}
                             {claimedItems.length > 0 && (
-                              <div onClick={() => setActiveIdx(claimedItems[activeIsClaimed ? (claimedItems.findIndex(x => x.i === activeIdx) + 1) % claimedItems.length : 0].i)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 3, flexShrink: 0, background: activeIsClaimed ? "rgba(200,71,43,.1)" : "var(--overlay)", border: `1.5px solid ${activeIsClaimed ? "rgba(200,71,43,.4)" : "transparent"}`, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11, opacity: activeIsClaimed ? 1 : 0.45, transition: "all .2s" }}>
+                              <div onClick={() => { setActiveIdx(claimedItems[activeIsClaimed ? (claimedItems.findIndex(x => x.i === activeIdx) + 1) % claimedItems.length : 0].i); setActiveTabKind("airdrop"); }} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 3, flexShrink: 0, background: activeTabKind === "airdrop" && activeIsClaimed ? "rgba(200,71,43,.1)" : "var(--overlay)", border: `1.5px solid ${activeTabKind === "airdrop" && activeIsClaimed ? "rgba(200,71,43,.4)" : "transparent"}`, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11, opacity: activeTabKind === "airdrop" && activeIsClaimed ? 1 : 0.45, transition: "all .2s" }}>
                                 <span style={{ fontSize: 9, color: "var(--soft)" }}>✓</span>
                                 {claimedItems.length === 1 ? (claimedItems[0].c.name || "Distribution") : `${claimedItems.length} claimed`}
                               </div>
                             )}
+                            {/* Vesting tabs */}
+                            {vestings.map((v, vi) => (
+                              <div key={`v-${vi}`} onClick={() => { setActiveTabKind("vesting"); setActiveVestingIdx(vi); }} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 3, flexShrink: 0, background: activeTabKind === "vesting" && activeVestingIdx === vi ? "rgba(111,175,142,.15)" : "var(--overlay)", border: `1.5px solid ${activeTabKind === "vesting" && activeVestingIdx === vi ? "rgba(111,175,142,.6)" : "var(--line)"}`, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: 11, transition: "all .2s" }}>
+                                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E", flexShrink: 0 }} />
+                                {v.name}
+                                <span style={{ fontSize: 8, color: "#6FAF8E", letterSpacing: ".06em" }}>VEST</span>
+                              </div>
+                            ))}
                           </div>
-                          {pendingItems.length === 0 && (
-                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 6, letterSpacing: ".06em" }}>All allocations claimed · click to view</div>
-                          )}
                         </div>
                       );
                     })()}
-                    {/* Header + badge */}
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, marginBottom: 20 }}>
-                      <div>
-                        <div style={{ fontFamily: "var(--font-serif)", fontSize: 25, color: "var(--ink)", lineHeight: 1.1 }}>{activeClaim?.name || "Distribution"}</div>
-                        <div style={{ fontSize: 13, color: "var(--mid)", marginTop: 5 }}>Sealed allocation · confidential ERC-20</div>
-                      </div>
-                      {activeClaim && claimedMap[activeClaim.airdrop.toLowerCase()] ? (
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", border: "1px solid var(--line)", background: "var(--overlay)", padding: "5px 10px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
-                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--soft)" }} />
-                          CLAIMED
-                        </span>
-                      ) : (
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid #6FAF8E", background: "rgba(111,175,142,.1)", padding: "5px 10px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
-                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />
-                          ELIGIBLE
-                        </span>
-                      )}
-                    </div>
-                    {/* Facts grid */}
-                    {activeClaim && (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "var(--line)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 20 }}>
-                        {[
-                          ["Token", activeClaim.symbol || "cUSDT"],
-                          ["Standard", "ERC-7984"],
-                          ["Network", "Sepolia"],
-                          ["Claim opens", new Date(activeClaim.startTime * 1000) < new Date() ? "Now open" : new Date(activeClaim.startTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })],
-                          ["Closes", new Date(activeClaim.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })],
-                          ["Amount", "Sealed · FHE"],
-                        ].map(([label, value]) => (
-                          <div key={label} style={{ background: "var(--card)", padding: "11px 13px" }}>
-                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 4 }}>{label}</div>
-                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)" }}>{value}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {/* Sealed amount teaser */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "13px 15px", border: "1px dashed var(--line)", borderRadius: 4, marginBottom: 20 }}>
-                      <div>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Your amount</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ height: 16, width: 100, background: "var(--bar)", borderRadius: 2, display: "inline-block", animation: "inkbar .5s ease both" }} />
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>cUSDT</span>
+
+                    {/* ── Airdrop content ── */}
+                    {activeTabKind === "airdrop" && (<>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, marginBottom: 20 }}>
+                        <div>
+                          <div style={{ fontFamily: "var(--font-serif)", fontSize: 25, color: "var(--ink)", lineHeight: 1.1 }}>{activeClaim?.name || "Distribution"}</div>
+                          <div style={{ fontSize: 13, color: "var(--mid)", marginTop: 5 }}>Sealed allocation · confidential ERC-20</div>
                         </div>
+                        {activeClaim && claimedMap[activeClaim.airdrop.toLowerCase()] ? (
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", border: "1px solid var(--line)", background: "var(--overlay)", padding: "5px 10px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--soft)" }} />CLAIMED
+                          </span>
+                        ) : (
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid #6FAF8E", background: "rgba(111,175,142,.1)", padding: "5px 10px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />ELIGIBLE
+                          </span>
+                        )}
                       </div>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", letterSpacing: ".08em" }}>SEALED</span>
-                    </div>
-                    <button className="s-btn" style={{ width: "100%", justifyContent: "center", fontSize: 15, animation: activeClaim && claimedMap[activeClaim.airdrop.toLowerCase()] ? "none" : "pulseRing 2.6s ease-out 1.2s infinite" }} onClick={() => setClaimStep(2)}>
-                      {activeClaim && claimedMap[activeClaim.airdrop.toLowerCase()] ? "Decrypt sealed amount →" : "Open my sealed allocation →"}
-                    </button>
+                      {activeClaim && (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "var(--line)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 20 }}>
+                          {[
+                            ["Token", activeClaim.symbol || "cUSDT"],
+                            ["Standard", "ERC-7984"],
+                            ["Network", "Sepolia"],
+                            ["Claim opens", new Date(activeClaim.startTime * 1000) < new Date() ? "Now open" : new Date(activeClaim.startTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })],
+                            ["Closes", new Date(activeClaim.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })],
+                            ["Amount", "Sealed · FHE"],
+                          ].map(([label, value]) => (
+                            <div key={label} style={{ background: "var(--card)", padding: "11px 13px" }}>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 4 }}>{label}</div>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)" }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "13px 15px", border: "1px dashed var(--line)", borderRadius: 4, marginBottom: 20 }}>
+                        <div>
+                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Your amount</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ height: 16, width: 100, background: "var(--bar)", borderRadius: 2, display: "inline-block", animation: "inkbar .5s ease both" }} />
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>cUSDT</span>
+                          </div>
+                        </div>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", letterSpacing: ".08em" }}>SEALED</span>
+                      </div>
+                      <button className="s-btn" style={{ width: "100%", justifyContent: "center", fontSize: 15, animation: activeClaim && claimedMap[activeClaim.airdrop.toLowerCase()] ? "none" : "pulseRing 2.6s ease-out 1.2s infinite" }} onClick={() => setClaimStep(2)}>
+                        {activeClaim && claimedMap[activeClaim.airdrop.toLowerCase()] ? "Decrypt sealed amount →" : "Open my sealed allocation →"}
+                      </button>
+                    </>)}
+
+                    {/* ── Vesting content — same card structure, reveal on click ── */}
+                    {activeTabKind === "vesting" && vestings[activeVestingIdx] && (() => {
+                      const v = vestings[activeVestingIdx];
+                      const nowSec = Date.now() / 1000;
+                      const cliffEnd = v.startTime + v.cliffSeconds;
+                      const inCliff = nowSec < cliffEnd;
+                      const expired = nowSec > v.endTime;
+                      const isClaiming = vestingClaiming === v.vestingId;
+                      const isRevealed = vestingRevealed.has(v.vestingId);
+                      const totalDec = parseFloat(v.amount || "0");
+                      const postCliffSecs = Math.max(0, v.endTime - cliffEnd);
+                      const numReleases = v.releaseIntervalSecs > 0 ? Math.max(1, Math.floor(postCliffSecs / v.releaseIntervalSecs)) : 1;
+                      const amtPerRelease = totalDec / numReleases;
+                      const elapsedPostCliff = Math.max(0, nowSec - cliffEnd);
+                      const completedReleases = inCliff ? 0 : Math.min(numReleases, Math.floor(elapsedPostCliff / v.releaseIntervalSecs));
+                      const claimableNow = completedReleases * amtPerRelease;
+                      const intervalDays = Math.round(v.releaseIntervalSecs / 86400);
+                      const cliffMo = v.cliffSeconds > 0 ? Math.round(v.cliffSeconds / (30 * 86400)) : 0;
+                      const durationMo = Math.round((v.endTime - v.startTime) / (30 * 86400));
+                      const fmt2 = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                      return (<>
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, marginBottom: 20 }}>
+                          <div>
+                            <div style={{ fontFamily: "var(--font-serif)", fontSize: 25, color: "var(--ink)", lineHeight: 1.1 }}>{v.name}</div>
+                            <div style={{ fontSize: 13, color: "var(--mid)", marginTop: 5 }}>Vesting schedule · confidential ERC-20</div>
+                          </div>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: inCliff ? "var(--accent)" : "#6FAF8E", border: `1px solid ${inCliff ? "rgba(200,71,43,.5)" : "#6FAF8E"}`, background: inCliff ? "rgba(200,71,43,.08)" : "rgba(111,175,142,.1)", padding: "5px 10px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: inCliff ? "var(--accent)" : "#6FAF8E" }} />
+                            {inCliff ? "CLIFF" : expired ? "EXPIRED" : "VESTING"}
+                          </span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "var(--line)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 20 }}>
+                          {[
+                            ["Token", v.symbol],
+                            ["Release", `Every ${intervalDays}d`],
+                            ["Network", "Sepolia"],
+                            ["Duration", `${durationMo}mo total`],
+                            ["Cliff", cliffMo > 0 ? `${cliffMo}mo` : "None"],
+                            ["Standard", "ERC-7984"],
+                          ].map(([label, value]) => (
+                            <div key={label} style={{ background: "var(--card)", padding: "11px 13px" }}>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 4 }}>{label}</div>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)" }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {!isRevealed ? (<>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "13px 15px", border: "1px dashed var(--line)", borderRadius: 4, marginBottom: 20 }}>
+                            <div>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Your allocation</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ height: 16, width: 100, background: "var(--bar)", borderRadius: 2, display: "inline-block" }} />
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>{v.symbol}</span>
+                              </div>
+                            </div>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", letterSpacing: ".08em" }}>SEALED</span>
+                          </div>
+                          <button className="s-btn" style={{ width: "100%", justifyContent: "center", fontSize: 15 }} onClick={() => setVestingRevealed(prev => new Set([...prev, v.vestingId]))}>
+                            View schedule & claim →
+                          </button>
+                        </>) : (<>
+                          <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
+                            {[
+                              ["Total allocation", `${fmt2(totalDec)} ${v.symbol}`],
+                              ["Per release", `${fmt2(amtPerRelease)} ${v.symbol} every ${intervalDays}d`],
+                              ["Releases", `${completedReleases} of ${numReleases} complete`],
+                              ["Next release", inCliff ? new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : claimableNow <= 0 ? `in ${Math.ceil((cliffEnd + (completedReleases + 1) * v.releaseIntervalSecs - nowSec) / 86400)}d` : "Now available"],
+                            ].map(([label, val], i, arr) => (
+                              <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : "none" }}>
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{label}</span>
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: label === "Total allocation" ? "var(--ink)" : "var(--mid)", fontWeight: label === "Total allocation" ? 600 : 400 }}>{val}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 15px", background: claimableNow > 0 ? "rgba(111,175,142,.08)" : "var(--overlay)", border: `1px solid ${claimableNow > 0 ? "rgba(111,175,142,.4)" : "var(--line)"}`, borderRadius: 4, marginBottom: 16 }}>
+                            <div>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Claimable now</div>
+                              <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: claimableNow > 0 ? "#6FAF8E" : "var(--soft)", lineHeight: 1 }}>{fmt2(claimableNow)}</div>
+                            </div>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{v.symbol}</span>
+                          </div>
+                          {inCliff || expired || claimableNow <= 0 ? (
+                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", textAlign: "center", padding: "4px 0 8px" }}>
+                              {inCliff ? `First release: ${new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : expired ? "Schedule ended" : "No new releases yet"}
+                            </div>
+                          ) : (
+                            <button onClick={async () => {
+                              if (!publicClient || !walletClient || isClaiming) return;
+                              setVestingClaiming(v.vestingId);
+                              try {
+                                const manager = createConfidentialVestingManagerClient({ publicClient, walletClient, address: v.manager as Address });
+                                const { feeType, fee } = await manager.getFeeInfo();
+                                const hash = await manager.claim(feeType === FeeType.Gas ? { feeType, vestingId: v.vestingId as `0x${string}`, value: fee } : { feeType, vestingId: v.vestingId as `0x${string}` });
+                                await publicClient.waitForTransactionReceipt({ hash });
+                                setBalanceRefresh(n => n + 1);
+                                toast(`Claimed ${fmt2(claimableNow)} ${v.symbol}`, { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
+                              } catch (e) { toast(humanizeError(e), { kind: "error" }); } finally { setVestingClaiming(null); }
+                            }} disabled={isClaiming} style={{ width: "100%", background: "var(--ink)", color: "var(--page-bg)", padding: "17px", borderRadius: 3, fontSize: 15, fontWeight: 700, cursor: isClaiming ? "default" : "pointer", border: "none", opacity: isClaiming ? 0.6 : 1 }}>
+                              {isClaiming ? "Claiming…" : `Claim ${fmt2(claimableNow)} ${v.symbol} →`}
+                            </button>
+                          )}
+                        </>)}
+                      </>);
+                    })()}
                   </div>
 
                   {/* RIGHT: next steps + privacy guarantees */}
@@ -898,9 +1012,9 @@ export default function ClaimPage() {
                 </div>
               )}
 
-              {/* ── Vesting cards — same style as airdrop allocation card ── */}
-              {vestings.length > 0 && claimView === "allocation" && (
-                <div style={{ marginTop: claims.length > 0 ? 16 : 0, marginBottom: 16 }}>
+              {/* Vesting cards now integrated into the airdrop grid tabs above */}
+              {false && vestings.length > 0 && claimView === "allocation" && (
+                <div style={{ marginTop: 0, marginBottom: 0 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {vestings.map(v => {
                       const nowSec = Date.now() / 1000;
