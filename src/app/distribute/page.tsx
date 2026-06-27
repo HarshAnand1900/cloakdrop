@@ -393,22 +393,22 @@ export default function DistributePage() {
         // ── Vesting — linear on-chain schedule via fhe-vesting SDK ──
         // batchCreateVesting: encrypts ALL amounts in one shared proof → 2 MetaMask interactions total
 
-        // Phase 0 — authorize operator
-        setExecPhaseIdx(0); setExecPhaseLabel("Checking operator authorization…"); setExecProgress(8);
-        startStuckTimer();
-        const didAuthV = await ensureOperator(vestingOperatorAbi, TOKENOPS.airdropFactory as Address);
-        clearStuckTimer();
-        setExecPhaseLabel(didAuthV ? "Authorized ✓" : "Operator already authorized — skipping"); setExecProgress(15);
-
-        // Phase 1 — deploy vesting manager
-        setExecPhaseIdx(1); setExecPhaseLabel("Check MetaMask — deploy vesting manager"); setExecProgress(20);
+        // Phase 0 — deploy vesting manager first (we need the address before we can authorize it)
+        setExecPhaseIdx(0); setExecPhaseLabel("Check MetaMask — deploy vesting manager"); setExecProgress(10);
         startStuckTimer();
         const vestingFactory = createConfidentialVestingFactoryClient({ publicClient, walletClient });
         const { manager: managerAddress } = await vestingFactory.createManager({
           token, userSalt: randomSalt(),
         });
         clearStuckTimer();
-        setExecPhaseLabel("Manager deployed · encrypting all allocations…"); setExecProgress(35);
+        setExecPhaseLabel("Manager deployed · authorizing token operator…"); setExecProgress(25);
+
+        // Phase 0.5 — authorize the manager as operator on the token
+        // (manager calls transferFrom to fund individual vestings when batchCreateVesting is called)
+        startStuckTimer();
+        await ensureOperator(vestingOperatorAbi, managerAddress as Address);
+        clearStuckTimer();
+        setExecPhaseLabel("Authorized · encrypting all allocations…"); setExecProgress(35);
 
         // Compute schedule timestamps
         const nowSec = Math.floor(Date.now() / 1000);
