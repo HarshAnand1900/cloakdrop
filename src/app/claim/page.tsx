@@ -6,6 +6,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import type { Hex, Address } from "viem";
 import { parseEventLogs } from "viem";
 import { createConfidentialAirdropClient } from "@tokenops/sdk/fhe-airdrop";
+import { createConfidentialVestingManagerClient, FeeType } from "@tokenops/sdk/fhe-vesting";
 import { useUserDecrypt } from "@zama-fhe/react-sdk";
 import { AppShell } from "@/components/AppShell";
 import { CanvasBackground } from "@/components/CanvasBackground";
@@ -341,6 +342,7 @@ export default function ClaimPage() {
   const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
   const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
   useSotto();
 
   // On-chain claimed status per airdrop (keyed by lowercased airdrop address)
@@ -365,6 +367,10 @@ export default function ClaimPage() {
   // Disperse history — direct pushes this recipient received
   const [disperses, setDisperses] = useState<{ txHash: string; name: string; symbol: string; createdAt: number }[]>([]);
   const [disperseLoading, setDisperseLoading] = useState(true);
+
+  // Vesting schedules for this recipient
+  const [vestings, setVestings] = useState<import("@/lib/types").VestingRecord[]>([]);
+  const [vestingClaiming, setVestingClaiming] = useState<string | null>(null); // vestingId being claimed
 
   // Step 2 inner state (lifted so step rail shows correctly)
   const [innerPhase, setInnerPhase] = useState<InnerPhase>("idle");
@@ -403,6 +409,11 @@ export default function ClaimPage() {
       .then(d => setDisperses(Array.isArray(d?.disperses) ? d.disperses : []))
       .catch(() => setDisperses([]))
       .finally(() => setDisperseLoading(false));
+    // Load vesting schedules
+    fetch(`/api/vestings?recipient=${address}`)
+      .then(r => r.json())
+      .then(d => setVestings(Array.isArray(d?.vestings) ? d.vestings : []))
+      .catch(() => setVestings([]));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, address, preselectedId]);
 
@@ -546,6 +557,71 @@ export default function ClaimPage() {
               <div style={{ marginBottom: 14 }}>
                 <BalanceCard refreshSignal={balanceRefresh} />
               </div>
+
+              {/* ── Vesting schedules ── */}
+              {vestings.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>
+                    Vesting schedules · {vestings.length}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {vestings.map(v => {
+                      const now = Date.now() / 1000;
+                      const cliffEnd = v.startTime + v.cliffSeconds;
+                      const elapsed = Math.max(0, now - cliffEnd);
+                      const linear = v.endTime - cliffEnd;
+                      const pct = linear > 0 ? Math.min(100, Math.round((elapsed / linear) * 100)) : 0;
+                      const inCliff = now < cliffEnd;
+                      const expired = now > v.endTime;
+                      const isClaiming = vestingClaiming === v.vestingId;
+                      return (
+                        <div key={v.vestingId} style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 5, padding: "16px 18px" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                            <div>
+                              <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ink)" }}>{v.name}</div>
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 3 }}>
+                                {`every ${v.releaseIntervalSecs / 86400}d · ${v.cliffSeconds > 0 ? `${v.cliffSeconds / (30 * 86400)}mo cliff · ` : ""}${v.endTime - v.startTime > 0 ? `${Math.round((v.endTime - v.startTime) / (30 * 86400))}mo total` : ""}`}
+                              </div>
+                            </div>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: inCliff ? "var(--accent)" : expired ? "var(--soft)" : "#6FAF8E", border: `1px solid ${inCliff ? "rgba(200,71,43,.4)" : expired ? "var(--line)" : "rgba(111,175,142,.5)"}`, padding: "3px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>
+                              {inCliff ? "IN CLIFF" : expired ? "EXPIRED" : `${pct}% VESTED`}
+                            </span>
+                          </div>
+                          <div style={{ height: 4, background: "var(--line)", borderRadius: 2, overflow: "hidden", marginBottom: 10 }}>
+                            <div style={{ height: "100%", width: `${pct}%`, background: "#6FAF8E", borderRadius: 2, transition: "width .5s" }} />
+                          </div>
+                          <button
+                            onClick={async () => {
+                              if (!publicClient || !walletClient || isClaiming || inCliff) return;
+                              setVestingClaiming(v.vestingId);
+                              try {
+                                const manager = createConfidentialVestingManagerClient({ publicClient, walletClient, address: v.manager as Address });
+                                const { feeType, fee } = await manager.getFeeInfo();
+                                const hash = await manager.claim(
+                                  feeType === FeeType.Gas
+                                    ? { feeType, vestingId: v.vestingId as `0x${string}`, value: fee }
+                                    : { feeType, vestingId: v.vestingId as `0x${string}` }
+                                );
+                                await publicClient.waitForTransactionReceipt({ hash });
+                                setBalanceRefresh(n => n + 1);
+                                toast(`Claimed vested ${v.symbol}`, { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
+                              } catch (e) {
+                                toast(humanizeError(e), { kind: "error" });
+                              } finally {
+                                setVestingClaiming(null);
+                              }
+                            }}
+                            disabled={isClaiming || inCliff || expired}
+                            style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: inCliff || expired ? "var(--soft)" : "var(--ink)", border: `1px solid ${inCliff || expired ? "var(--line)" : "var(--ink)"}`, background: "transparent", padding: "7px 14px", borderRadius: 3, cursor: inCliff || expired ? "default" : "pointer", opacity: isClaiming ? 0.6 : 1 }}
+                          >
+                            {isClaiming ? "Claiming…" : inCliff ? `Cliff ends ${new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : expired ? "Expired" : "Claim vested amount →"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Segmented view toggle: Allocation | Activity */}
               {!checking && (claims.length > 0 || disperses.length > 0) && (

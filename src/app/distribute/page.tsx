@@ -12,6 +12,12 @@ import {
   erc7984OperatorAbi,
 } from "@tokenops/sdk/fhe-airdrop";
 import {
+  createConfidentialVestingFactoryClient,
+  createConfidentialVestingManagerClient,
+  erc7984OperatorAbi as vestingOperatorAbi,
+} from "@tokenops/sdk/fhe-vesting";
+import { parseEventLogs } from "viem";
+import {
   createConfidentialDisperseClient,
   erc7984OperatorAbi as disperseOperatorAbi,
 } from "@tokenops/sdk/fhe-disperse";
@@ -31,7 +37,7 @@ import { toast } from "@/components/toast";
 import { humanizeError } from "@/components/Faucet";
 import { Faucet } from "@/components/Faucet";
 
-type Method = "airdrop" | "disperse";
+type Method = "airdrop" | "disperse" | "vesting";
 type UseCase = "investor" | "team" | "community";
 
 const SAMPLE_LIST =
@@ -79,6 +85,7 @@ export default function DistributePage() {
   const [vestingEnabled, setVestingEnabled] = useState(false);
   const [cliffMonths, setCliffMonths] = useState(6);
   const [vestingDuration, setVestingDuration] = useState(24);
+  const [releaseIntervalDays, setReleaseIntervalDays] = useState(30); // monthly by default
   const [ensResolving, setEnsResolving] = useState(false);
 
   // Step 3 review
@@ -325,7 +332,7 @@ export default function DistributePage() {
         await new Promise(r => setTimeout(r, 700));
         nav(5);
 
-      } else {
+      } else if (method === "disperse") {
         // ── Disperse ──
         // Phase 0 — authorize operator (skipped if already set)
         setExecPhaseIdx(0); setExecPhaseLabel("Checking operator authorization…"); setExecProgress(8);
@@ -381,6 +388,86 @@ export default function DistributePage() {
         toast("Confidential disperse complete — recipients' balances updated", { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
         await new Promise(r => setTimeout(r, 700));
         nav(5);
+
+      } else {
+        // ── Vesting — linear on-chain schedule via fhe-vesting SDK ──
+        // batchCreateVesting: encrypts ALL amounts in one shared proof → 2 MetaMask interactions total
+
+        // Phase 0 — authorize operator
+        setExecPhaseIdx(0); setExecPhaseLabel("Checking operator authorization…"); setExecProgress(8);
+        startStuckTimer();
+        const didAuthV = await ensureOperator(vestingOperatorAbi, TOKENOPS.airdropFactory as Address);
+        clearStuckTimer();
+        setExecPhaseLabel(didAuthV ? "Authorized ✓" : "Operator already authorized — skipping"); setExecProgress(15);
+
+        // Phase 1 — deploy vesting manager
+        setExecPhaseIdx(1); setExecPhaseLabel("Check MetaMask — deploy vesting manager"); setExecProgress(20);
+        startStuckTimer();
+        const vestingFactory = createConfidentialVestingFactoryClient({ publicClient, walletClient });
+        const { hash: managerHash, manager: managerAddress } = await vestingFactory.createManager({
+          token, userSalt: randomSalt(),
+        });
+        clearStuckTimer();
+        setExecPhaseLabel("Manager deployed · encrypting all allocations…"); setExecProgress(35);
+
+        // Compute schedule timestamps
+        const nowSec = Math.floor(Date.now() / 1000);
+        const cliffSec = cliffMonths * 30 * 24 * 3600;
+        const durationSec = vestingDuration * 30 * 24 * 3600;
+        const releaseSec = releaseIntervalDays * 24 * 3600;
+
+        const vestingParams = rows.map(r => ({
+          recipient: r.recipient as `0x${string}`,
+          startTimestamp: nowSec,
+          endTimestamp: nowSec + durationSec,
+          cliffSeconds: cliffSec,
+          releaseIntervalSecs: releaseSec,
+          timelockSeconds: 0,
+          initialUnlockBps: 0,
+          cliffAmountBps: 0,
+          isRevocable: false,
+        }));
+
+        // Phase 2 — batch create all vestings in ONE tx (single MetaMask approval)
+        setExecPhaseLabel("Check MetaMask — approve batch vesting creation"); setExecProgress(50);
+        startStuckTimer();
+        const vestingManager = createConfidentialVestingManagerClient({
+          publicClient, walletClient, encryptor, address: managerAddress,
+        });
+        const batchHash = await vestingManager.batchCreateVesting({
+          items: rows.map((r, i) => ({ params: vestingParams[i], amount: toRaw(r.amount) })),
+        });
+        clearStuckTimer();
+
+        // Parse VestingCreated events to get vestingIds per recipient
+        setExecPhaseLabel("Confirming and extracting vesting IDs…"); setExecProgress(75);
+        const batchReceipt = await publicClient.waitForTransactionReceipt({ hash: batchHash });
+        const vestingAbi = [{ anonymous: false, inputs: [{ indexed: true, internalType: "bytes32", name: "vestingId", type: "bytes32" }, { indexed: true, internalType: "address", name: "recipient", type: "address" }, { indexed: false, internalType: "uint32", name: "startTimestamp", type: "uint32" }, { indexed: false, internalType: "uint32", name: "endTimestamp", type: "uint32" }, { indexed: false, internalType: "uint32", name: "cliffReleaseTimestamp", type: "uint32" }, { indexed: false, internalType: "bytes32", name: "encryptedAmount", type: "bytes32" }], name: "VestingCreated", type: "event" }] as const;
+        const vestingLogs = parseEventLogs({ abi: vestingAbi, eventName: "VestingCreated", logs: batchReceipt.logs });
+
+        // Phase 3 — persist
+        setExecPhaseLabel("Saving vesting schedules…"); setExecProgress(88);
+        const vestingRecords = vestingLogs.map(log => ({
+          vestingId: (log.args as { vestingId: string }).vestingId,
+          manager: managerAddress,
+          admin: address!,
+          recipient: (log.args as { recipient: string }).recipient,
+          name: `${ucName} #${Date.now().toString().slice(-4)}`,
+          startTime: nowSec,
+          endTime: nowSec + durationSec,
+          cliffSeconds: cliffSec,
+          releaseIntervalSecs: releaseSec,
+          symbol: CUSDT.symbol,
+          amount: rows.find(r => r.recipient.toLowerCase() === ((log.args as { recipient: string }).recipient ?? "").toLowerCase())?.amount ?? "0",
+          createdAt: Date.now(),
+        }));
+        await fetch("/api/vestings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ vestings: vestingRecords }) });
+
+        setExecPhaseIdx(3); setExecPhaseLabel("Vesting schedules live ✓"); setExecProgress(100);
+        setResult({ txHash: batchHash, count: rows.length });
+        toast(`${rows.length} vesting schedules created`, { kind: "success", href: explorerTx(batchHash), hrefLabel: "View tx ↗" });
+        await new Promise(r => setTimeout(r, 700));
+        nav(5);
       }
     } catch (e) {
       clearStuckTimer();
@@ -399,17 +486,25 @@ export default function DistributePage() {
 
   executeRef.current = execute;
 
-  // Vesting bars
+  // Vesting bars — shape depends on actual method:
+  // airdrop: cliff flat → single tall bar (100% unlocks at once after cliff)
+  // vesting: cliff flat → equal-height monthly bars (1/N each release)
   const vestingBars = useMemo(() => {
     const dur = Math.max(vestingDuration, 1);
     const cliff = Math.min(cliffMonths, dur);
-    const linear = dur - cliff;
+    const postCliff = dur - cliff;
+    const releases = releaseIntervalDays > 0 ? Math.ceil(postCliff * 30 / releaseIntervalDays) : postCliff;
     return Array.from({ length: Math.min(dur, 36) }, (_, i) => {
       const isCliff = i < cliff;
-      const frac = isCliff ? 0 : linear > 0 ? (i - cliff + 1) / linear : 1;
-      return { h: (isCliff ? 8 : Math.max(4, Math.round(frac * 72))) + "px", isCliff, op: isCliff ? ".4" : String(Math.round((0.35 + frac * 0.65) * 100) / 100) };
+      if (isCliff) return { h: "6px", isCliff: true, op: ".35" };
+      if (method === "vesting") {
+        // Equal bars — each release period unlocks the same fraction
+        return { h: "64px", isCliff: false, op: String(0.4 + ((i - cliff) / Math.max(releases - 1, 1)) * 0.6) };
+      }
+      // Airdrop: single full-height bar right after cliff, rest empty
+      return { h: i === cliff ? "72px" : "0px", isCliff: false, op: "1" };
     });
-  }, [cliffMonths, vestingDuration]);
+  }, [cliffMonths, vestingDuration, releaseIntervalDays, method]);
 
   // Collect config
   const ucName = { investor: "Investor allocation", team: "Team payout", community: "Community airdrop" }[useCase];
@@ -528,8 +623,8 @@ export default function DistributePage() {
                       Method <InfoTip text="Airdrop: recipients pull their allocation any time during the claim window. Disperse: you push to all recipients at once in a single transaction — faster, no claim step needed." />
                     </div>
                     <div style={{ display: "flex", border: "1.5px solid var(--line)", borderRadius: 3, overflow: "hidden" }}>
-                      {(["airdrop", "disperse"] as const).map(m => (
-                        <div key={m} onClick={() => setMethod(m)} style={{ flex: 1, textAlign: "center", padding: 12, fontSize: 13.5, fontWeight: 600, cursor: "pointer", background: method === m ? "rgba(200,71,43,.15)" : "transparent", color: method === m ? "var(--accent)" : "var(--mid)", borderRight: m === "airdrop" ? "1px solid var(--line)" : "none", transition: "all .2s" }}>
+                      {(["airdrop", "disperse", "vesting"] as const).map((m, i, arr) => (
+                        <div key={m} onClick={() => setMethod(m)} style={{ flex: 1, textAlign: "center", padding: 12, fontSize: 13, fontWeight: 600, cursor: "pointer", background: method === m ? "rgba(200,71,43,.15)" : "transparent", color: method === m ? "var(--accent)" : "var(--mid)", borderRight: i < arr.length - 1 ? "1px solid var(--line)" : "none", transition: "all .2s" }}>
                           {m.charAt(0).toUpperCase() + m.slice(1)}
                         </div>
                       ))}
@@ -537,7 +632,9 @@ export default function DistributePage() {
                     <div style={{ fontSize: 12, color: "var(--soft)", marginTop: 8 }}>
                       {method === "airdrop"
                         ? "Recipients pull their allocation when ready. Requires one MetaMask sign per recipient — best for small lists."
-                        : "Sealed amounts pushed directly to wallets in a single tx. One MetaMask confirmation regardless of list size."}
+                        : method === "disperse"
+                        ? "Sealed amounts pushed directly to wallets in a single tx. One MetaMask confirmation regardless of list size."
+                        : "Linear vesting — amounts unlock progressively on a schedule. Recipients claim their vested portion anytime."}
                     </div>
                   </div>
                   <div>
@@ -686,8 +783,19 @@ export default function DistributePage() {
                         }} style={{ width: "100%", accentColor: "var(--accent)" }} />
                       </div>
                     </div>
+                    {method === "vesting" && (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, color: "var(--mid)", marginBottom: 6 }}>Release interval · every {releaseIntervalDays}d</div>
+                        <input type="range" min={1} max={90} step={1} value={releaseIntervalDays} onChange={e => setReleaseIntervalDays(parseInt(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
+                        <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)", marginTop: 3 }}>
+                          <span>Daily</span><span>Weekly (7d)</span><span>Monthly (30d)</span><span>Quarterly (90d)</span>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ fontSize: 11.5, color: "var(--soft)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
-                      ↳ Sets claim window: opens {cliffMonths > 0 ? `${cliffMonths}mo from now` : "immediately"} · expires {vestingDuration}mo from now
+                      {method === "vesting"
+                        ? `↳ ${cliffMonths}mo cliff → unlocks every ${releaseIntervalDays}d over ${vestingDuration}mo total`
+                        : `↳ Sets claim window: opens ${cliffMonths > 0 ? `${cliffMonths}mo from now` : "immediately"} · expires ${vestingDuration}mo from now`}
                     </div>
                     <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 80, overflow: "hidden" }}>
                       {vestingBars.map((b, i) => (

@@ -45,6 +45,31 @@ export interface Campaign {
   signerSalt?: string;
 }
 
+/** A vesting schedule record stored server-side, returned to the recipient. */
+export interface VestingRecord {
+  /** Vesting schedule ID from the VestingCreated event. */
+  vestingId: Hex;
+  /** Vesting manager contract address. */
+  manager: Address;
+  /** Admin (distributor) wallet address — for dashboard lookup. */
+  admin: Address;
+  /** Recipient wallet address. */
+  recipient: Address;
+  /** Human label for the distribution. */
+  name: string;
+  /** Unix seconds. */
+  startTime: number;
+  endTime: number;
+  cliffSeconds: number;
+  releaseIntervalSecs: number;
+  /** Token symbol. */
+  symbol: string;
+  /** Plaintext amount in raw 6-dec units — admin dashboard only. */
+  amount: string;
+  /** Creation timestamp (ms). */
+  createdAt: number;
+}
+
 /** Public-facing claim payload returned to a recipient (no other recipients' data). */
 export interface PublicClaim {
   airdrop: Address;
