@@ -665,12 +665,29 @@ export default function DistributePage() {
                     <div style={{ display: "flex", gap: 18, marginBottom: 16 }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 12, color: "var(--mid)", marginBottom: 6 }}>Cliff · {cliffMonths}mo cliff</div>
-                        <input type="range" min={0} max={18} step={1} value={cliffMonths} onChange={e => setCliffMonths(parseInt(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
+                        <input type="range" min={0} max={18} step={1} value={cliffMonths} onChange={e => {
+                          const cliff = parseInt(e.target.value);
+                          setCliffMonths(cliff);
+                          // Auto-set claim opens date to cliff end
+                          const opens = new Date();
+                          opens.setMonth(opens.getMonth() + cliff);
+                          setClaimOpenDate(opens.toISOString().slice(0, 16));
+                        }} style={{ width: "100%", accentColor: "var(--accent)" }} />
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 12, color: "var(--mid)", marginBottom: 6 }}>Duration · {vestingDuration}mo total</div>
-                        <input type="range" min={6} max={48} step={3} value={vestingDuration} onChange={e => setVestingDuration(parseInt(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
+                        <input type="range" min={6} max={48} step={3} value={vestingDuration} onChange={e => {
+                          const dur = parseInt(e.target.value);
+                          setVestingDuration(dur);
+                          // Auto-set claim expires date to vesting end
+                          const expires = new Date();
+                          expires.setMonth(expires.getMonth() + dur);
+                          setClaimCloseDate(expires.toISOString().slice(0, 16));
+                        }} style={{ width: "100%", accentColor: "var(--accent)" }} />
                       </div>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--soft)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
+                      ↳ Sets claim window: opens {cliffMonths > 0 ? `${cliffMonths}mo from now` : "immediately"} · expires {vestingDuration}mo from now
                     </div>
                     <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 80, overflow: "hidden" }}>
                       {vestingBars.map((b, i) => (
