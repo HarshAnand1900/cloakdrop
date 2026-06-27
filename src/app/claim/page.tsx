@@ -372,7 +372,16 @@ export default function ClaimPage() {
   const [vestings, setVestings] = useState<import("@/lib/types").VestingRecord[]>([]);
   const [vestingClaiming, setVestingClaiming] = useState<string | null>(null);
   const [vestingRevealed, setVestingRevealed] = useState<Set<string>>(new Set());
-  const [vestingRevealing, setVestingRevealing] = useState<string | null>(null); // loading state for on-chain read
+  const [vestingRevealing, setVestingRevealing] = useState<string | null>(null);
+  // FHE decrypt for vesting amounts — handle fetched from getVestingInfo on-chain
+  const [vestingDecryptHandle, setVestingDecryptHandle] = useState<{ handle: Hex; manager: Address } | null>(null);
+  const vestingDecrypt = useUserDecrypt(
+    { handles: vestingDecryptHandle ? [{ handle: vestingDecryptHandle.handle, contractAddress: vestingDecryptHandle.manager }] : [] },
+    { enabled: !!vestingDecryptHandle },
+  );
+  const decryptedVestingAmt: bigint | undefined = vestingDecryptHandle && vestingDecrypt.data
+    ? (vestingDecrypt.data[vestingDecryptHandle.handle] as bigint | undefined)
+    : undefined;
   // "airdrop" or "vesting" — which tab type is currently selected
   const [activeTabKind, setActiveTabKind] = useState<"airdrop" | "vesting">("airdrop");
   const [activeVestingIdx, setActiveVestingIdx] = useState(0);
@@ -913,62 +922,98 @@ export default function ClaimPage() {
                           </div>
                           <button
                             className="s-btn"
-                            style={{ width: "100%", justifyContent: "center", fontSize: 15 }}
-                            disabled={vestingRevealing === v.vestingId}
+                            style={{ width: "100%", justifyContent: "center", fontSize: 15, animation: "pulseRing 2.6s ease-out 1.2s infinite" }}
+                            disabled={vestingRevealing === v.vestingId || vestingDecrypt.isFetching}
                             onClick={async () => {
                               if (!publicClient || vestingRevealing === v.vestingId) return;
                               setVestingRevealing(v.vestingId);
                               try {
-                                // Real on-chain read — proves the schedule lives on Sepolia
+                                // Step 1: read encrypted handle from chain (public RPC, no wallet)
                                 const manager = createConfidentialVestingManagerClient({ publicClient, address: v.manager as Address });
-                                await manager.getVestingInfo(v.vestingId as `0x${string}`);
-                              } catch { /* non-fatal — still reveal */ }
+                                const info = await manager.getVestingInfo(v.vestingId as `0x${string}`);
+                                const handle = (info as { encryptedAmount?: Hex }).encryptedAmount;
+                                if (handle && handle !== "0x" + "0".repeat(64)) {
+                                  // Step 2: trigger FHE decrypt — this opens MetaMask for signature
+                                  setVestingDecryptHandle({ handle, manager: v.manager as Address });
+                                }
+                              } catch { /* if info read fails, still show schedule without amount */ }
                               setVestingRevealing(null);
                               setVestingRevealed(prev => new Set([...prev, v.vestingId]));
                             }}
                           >
-                            {vestingRevealing === v.vestingId ? "Reading from chain…" : "View schedule & claim →"}
+                            {vestingRevealing === v.vestingId ? "Reading from chain…" : vestingDecrypt.isFetching ? "Decrypting amount…" : "Declassify schedule →"}
                           </button>
                         </>) : (<>
+                          {/* Schedule metadata — always shown after reveal */}
                           <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
                             {[
-                              ["Total allocation", `${fmt2(totalDec)} ${v.symbol}`],
-                              ["Per release", `${fmt2(amtPerRelease)} ${v.symbol} every ${intervalDays}d`],
                               ["Releases", `${completedReleases} of ${numReleases} complete`],
+                              ["Release interval", `Every ${intervalDays}d`],
                               ["Next release", inCliff ? new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : claimableNow <= 0 ? `in ${Math.ceil((cliffEnd + (completedReleases + 1) * v.releaseIntervalSecs - nowSec) / 86400)}d` : "Now available"],
+                              ["Schedule ends", new Date(v.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })],
                             ].map(([label, val], i, arr) => (
                               <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : "none" }}>
                                 <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{label}</span>
-                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: label === "Total allocation" ? "var(--ink)" : "var(--mid)", fontWeight: label === "Total allocation" ? 600 : 400 }}>{val}</span>
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--mid)" }}>{val}</span>
                               </div>
                             ))}
                           </div>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 15px", background: claimableNow > 0 ? "rgba(111,175,142,.08)" : "var(--overlay)", border: `1px solid ${claimableNow > 0 ? "rgba(111,175,142,.4)" : "var(--line)"}`, borderRadius: 4, marginBottom: 16 }}>
-                            <div>
-                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Claimable now</div>
-                              <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: claimableNow > 0 ? "#6FAF8E" : "var(--soft)", lineHeight: 1 }}>{fmt2(claimableNow)}</div>
+
+                          {/* Amounts — only shown after FHE decrypt */}
+                          {decryptedVestingAmt !== undefined ? (() => {
+                            const totalFmt = fmt2(Number(decryptedVestingAmt) / 1e6);
+                            const perReleaseFmt = fmt2(Number(decryptedVestingAmt) / 1e6 / numReleases);
+                            const claimableDecrypted = completedReleases * (Number(decryptedVestingAmt) / 1e6 / numReleases);
+                            return (<>
+                              <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
+                                {[
+                                  ["Total allocation", `${totalFmt} ${v.symbol}`],
+                                  ["Per release", `${perReleaseFmt} ${v.symbol} every ${intervalDays}d`],
+                                ].map(([label, val], i, arr) => (
+                                  <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : "none" }}>
+                                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{label}</span>
+                                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{val}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 15px", background: claimableDecrypted > 0 ? "rgba(111,175,142,.08)" : "var(--overlay)", border: `1px solid ${claimableDecrypted > 0 ? "rgba(111,175,142,.4)" : "var(--line)"}`, borderRadius: 4, marginBottom: 16 }}>
+                                <div>
+                                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Claimable now</div>
+                                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: claimableDecrypted > 0 ? "#6FAF8E" : "var(--soft)", lineHeight: 1 }}>{fmt2(claimableDecrypted)}</div>
+                                </div>
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{v.symbol}</span>
+                              </div>
+                              {inCliff || expired || claimableDecrypted <= 0 ? (
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", textAlign: "center", padding: "4px 0 8px" }}>
+                                  {inCliff ? `First release: ${new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : expired ? "Schedule ended" : "No new releases yet"}
+                                </div>
+                              ) : (
+                                <button onClick={async () => {
+                                  if (!publicClient || !walletClient || isClaiming) return;
+                                  setVestingClaiming(v.vestingId);
+                                  try {
+                                    const manager = createConfidentialVestingManagerClient({ publicClient, walletClient, address: v.manager as Address });
+                                    const { feeType, fee } = await manager.getFeeInfo();
+                                    const hash = await manager.claim(feeType === FeeType.Gas ? { feeType, vestingId: v.vestingId as `0x${string}`, value: fee } : { feeType, vestingId: v.vestingId as `0x${string}` });
+                                    await publicClient.waitForTransactionReceipt({ hash });
+                                    setBalanceRefresh(n => n + 1);
+                                    toast(`Claimed ${fmt2(claimableDecrypted)} ${v.symbol}`, { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
+                                  } catch (e) { toast(humanizeError(e), { kind: "error" }); } finally { setVestingClaiming(null); }
+                                }} disabled={isClaiming} style={{ width: "100%", background: "var(--ink)", color: "var(--page-bg)", padding: "17px", borderRadius: 3, fontSize: 15, fontWeight: 700, cursor: isClaiming ? "default" : "pointer", border: "none", opacity: isClaiming ? 0.6 : 1 }}>
+                                  {isClaiming ? "Claiming…" : `Claim ${fmt2(claimableDecrypted)} ${v.symbol} →`}
+                                </button>
+                              )}
+                            </>);
+                          })() : (
+                            /* Amounts still decrypting or not yet decrypted */
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0" }}>
+                              {vestingDecrypt.isFetching ? (
+                                <><div className="s-spinner" style={{ width: 14, height: 14 }} />
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>Decrypting allocation in browser…</span></>
+                              ) : (
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>Amount sealed · decryption in progress</span>
+                              )}
                             </div>
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{v.symbol}</span>
-                          </div>
-                          {inCliff || expired || claimableNow <= 0 ? (
-                            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", textAlign: "center", padding: "4px 0 8px" }}>
-                              {inCliff ? `First release: ${new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : expired ? "Schedule ended" : "No new releases yet"}
-                            </div>
-                          ) : (
-                            <button onClick={async () => {
-                              if (!publicClient || !walletClient || isClaiming) return;
-                              setVestingClaiming(v.vestingId);
-                              try {
-                                const manager = createConfidentialVestingManagerClient({ publicClient, walletClient, address: v.manager as Address });
-                                const { feeType, fee } = await manager.getFeeInfo();
-                                const hash = await manager.claim(feeType === FeeType.Gas ? { feeType, vestingId: v.vestingId as `0x${string}`, value: fee } : { feeType, vestingId: v.vestingId as `0x${string}` });
-                                await publicClient.waitForTransactionReceipt({ hash });
-                                setBalanceRefresh(n => n + 1);
-                                toast(`Claimed ${fmt2(claimableNow)} ${v.symbol}`, { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
-                              } catch (e) { toast(humanizeError(e), { kind: "error" }); } finally { setVestingClaiming(null); }
-                            }} disabled={isClaiming} style={{ width: "100%", background: "var(--ink)", color: "var(--page-bg)", padding: "17px", borderRadius: 3, fontSize: 15, fontWeight: 700, cursor: isClaiming ? "default" : "pointer", border: "none", opacity: isClaiming ? 0.6 : 1 }}>
-                              {isClaiming ? "Claiming…" : `Claim ${fmt2(claimableNow)} ${v.symbol} →`}
-                            </button>
                           )}
                         </>)}
                       </>);
