@@ -899,7 +899,7 @@ export default function ClaimPage() {
               )}
 
               {/* ── Vesting schedules — inside allocation view ── */}
-              {!checking && vestings.length > 0 && claimView === "allocation" && (
+              {vestings.length > 0 && claimView === "allocation" && (
                 <div style={{ marginTop: claims.length > 0 ? 16 : 0, marginBottom: 16 }}>
                   {claims.length > 0 && (
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
