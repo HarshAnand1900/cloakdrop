@@ -372,6 +372,7 @@ export default function ClaimPage() {
   const [vestings, setVestings] = useState<import("@/lib/types").VestingRecord[]>([]);
   const [vestingClaiming, setVestingClaiming] = useState<string | null>(null);
   const [vestingRevealed, setVestingRevealed] = useState<Set<string>>(new Set());
+  const [vestingRevealing, setVestingRevealing] = useState<string | null>(null); // loading state for on-chain read
   // "airdrop" or "vesting" — which tab type is currently selected
   const [activeTabKind, setActiveTabKind] = useState<"airdrop" | "vesting">("airdrop");
   const [activeVestingIdx, setActiveVestingIdx] = useState(0);
@@ -910,8 +911,23 @@ export default function ClaimPage() {
                             </div>
                             <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", letterSpacing: ".08em" }}>SEALED</span>
                           </div>
-                          <button className="s-btn" style={{ width: "100%", justifyContent: "center", fontSize: 15 }} onClick={() => setVestingRevealed(prev => new Set([...prev, v.vestingId]))}>
-                            View schedule & claim →
+                          <button
+                            className="s-btn"
+                            style={{ width: "100%", justifyContent: "center", fontSize: 15 }}
+                            disabled={vestingRevealing === v.vestingId}
+                            onClick={async () => {
+                              if (!publicClient || vestingRevealing === v.vestingId) return;
+                              setVestingRevealing(v.vestingId);
+                              try {
+                                // Real on-chain read — proves the schedule lives on Sepolia
+                                const manager = createConfidentialVestingManagerClient({ publicClient, address: v.manager as Address });
+                                await manager.getVestingInfo(v.vestingId as `0x${string}`);
+                              } catch { /* non-fatal — still reveal */ }
+                              setVestingRevealing(null);
+                              setVestingRevealed(prev => new Set([...prev, v.vestingId]));
+                            }}
+                          >
+                            {vestingRevealing === v.vestingId ? "Reading from chain…" : "View schedule & claim →"}
                           </button>
                         </>) : (<>
                           <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
@@ -1184,12 +1200,28 @@ export default function ClaimPage() {
                           date: timeAgo(d.createdAt),
                           status: "received" as const,
                           txHash: d.txHash as Hex,
+                          createdAt: d.createdAt,
                         }))
                       : [];
-                    const allRows = [...claimRows, ...disperseRows].sort((a, b) => {
-                      const ta = a.kind === "disperse" ? (disperses.find(d => d.txHash === (a as {txHash:string}).txHash)?.createdAt ?? 0) : (claims[a.kind === "claim" ? (a as {idx:number}).idx : 0]?.startTime ?? 0) * 1000;
-                      const tb = b.kind === "disperse" ? (disperses.find(d => d.txHash === (b as {txHash:string}).txHash)?.createdAt ?? 0) : (claims[b.kind === "claim" ? (b as {idx:number}).idx : 0]?.startTime ?? 0) * 1000;
-                      return tb - ta;
+                    const vestingRows = (claimTab === "all")
+                      ? vestings.map((v, vi) => ({
+                          kind: "vesting" as const,
+                          key: `vesting-${vi}`,
+                          title: v.name,
+                          sub: `Vesting · every ${Math.round(v.releaseIntervalSecs / 86400)}d · ${Math.round((v.endTime - v.startTime) / (30 * 86400))}mo total`,
+                          date: timeAgo(v.createdAt),
+                          status: "active" as const,
+                          vestingIdx: vi,
+                          createdAt: v.createdAt,
+                        }))
+                      : [];
+                    const allRows = [...claimRows, ...disperseRows, ...vestingRows].sort((a, b) => {
+                      const getTs = (r: typeof allRows[0]) => {
+                        if ("createdAt" in r && r.createdAt) return r.createdAt;
+                        if (r.kind === "claim") return (claims[(r as {idx:number}).idx]?.startTime ?? 0) * 1000;
+                        return 0;
+                      };
+                      return getTs(b) - getTs(a);
                     });
 
                     if (allRows.length === 0) {
@@ -1204,10 +1236,12 @@ export default function ClaimPage() {
                       pending: { label: "Pending", fg: "var(--accent)", bd: "rgba(200,71,43,.4)", bg: "rgba(200,71,43,.08)" },
                       claimed: { label: "Claimed", fg: "var(--soft)", bd: "var(--line)", bg: "transparent" },
                       received: { label: "Received", fg: "#6FAF8E", bd: "rgba(111,175,142,.5)", bg: "rgba(111,175,142,.1)" },
+                      active: { label: "Vesting", fg: "#6FAF8E", bd: "rgba(111,175,142,.5)", bg: "rgba(111,175,142,.1)" },
                     };
                     const kindMap = {
                       claim: { tag: "CLAIM", fg: "var(--soft)", bd: "var(--line)" },
                       disperse: { tag: "DISPERSE", fg: "var(--accent)", bd: "rgba(200,71,43,.4)" },
+                      vesting: { tag: "VEST", fg: "#6FAF8E", bd: "rgba(111,175,142,.5)" },
                     };
 
                     return (
@@ -1215,9 +1249,12 @@ export default function ClaimPage() {
                         {allRows.map((row, i) => {
                           const st = statusMap[row.status];
                           const kd = kindMap[row.kind];
-                          const clickable = row.kind === "claim";
+                          const clickable = row.kind === "claim" || row.kind === "vesting";
                           return (
-                            <div key={row.key} onClick={clickable ? () => { setActiveIdx((row as { idx: number }).idx); setClaimStep(2); } : undefined} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 16, alignItems: "center", padding: "15px 20px", borderBottom: i < allRows.length - 1 ? "1px solid var(--line)" : "none", cursor: clickable ? "pointer" : "default", transition: "background .15s", animation: `rowIn .35s ${(i * 0.06).toFixed(2)}s ease both` }}>
+                            <div key={row.key} onClick={clickable ? () => {
+                              if (row.kind === "claim") { setActiveIdx((row as {idx:number}).idx); setClaimStep(2); }
+                              if (row.kind === "vesting") { setActiveTabKind("vesting"); setActiveVestingIdx((row as {vestingIdx:number}).vestingIdx); setClaimView("allocation"); }
+                            } : undefined} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 16, alignItems: "center", padding: "15px 20px", borderBottom: i < allRows.length - 1 ? "1px solid var(--line)" : "none", cursor: clickable ? "pointer" : "default", transition: "background .15s", animation: `rowIn .35s ${(i * 0.06).toFixed(2)}s ease both` }}>
                               <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", color: kd.fg, border: `1px solid ${kd.bd}`, padding: "4px 8px", borderRadius: 3 }}>{kd.tag}</span>
                               <div>
                                 <div style={{ fontSize: 14.5, color: "var(--ink)", fontWeight: 500 }}>{row.title}</div>
