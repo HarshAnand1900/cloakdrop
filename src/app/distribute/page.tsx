@@ -82,7 +82,6 @@ export default function DistributePage() {
   // Step 2 recipients
   const [rawList, setRawList] = useState("");
   const [csvDragging, setCsvDragging] = useState(false);
-  const [vestingEnabled, setVestingEnabled] = useState(false);
   const [cliffMonths, setCliffMonths] = useState(6);
   const [vestingDuration, setVestingDuration] = useState(24);
   const [releaseIntervalDays, setReleaseIntervalDays] = useState(30); // monthly by default
