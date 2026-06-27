@@ -370,7 +370,8 @@ export default function ClaimPage() {
 
   // Vesting schedules for this recipient
   const [vestings, setVestings] = useState<import("@/lib/types").VestingRecord[]>([]);
-  const [vestingClaiming, setVestingClaiming] = useState<string | null>(null); // vestingId being claimed
+  const [vestingClaiming, setVestingClaiming] = useState<string | null>(null);
+  const [vestingRevealed, setVestingRevealed] = useState<Set<string>>(new Set());
 
   // Step 2 inner state (lifted so step rail shows correctly)
   const [innerPhase, setInnerPhase] = useState<InnerPhase>("idle");
@@ -564,58 +565,154 @@ export default function ClaimPage() {
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>
                     Vesting schedules · {vestings.length}
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     {vestings.map(v => {
-                      const now = Date.now() / 1000;
+                      const nowSec = Date.now() / 1000;
                       const cliffEnd = v.startTime + v.cliffSeconds;
-                      const elapsed = Math.max(0, now - cliffEnd);
-                      const linear = v.endTime - cliffEnd;
-                      const pct = linear > 0 ? Math.min(100, Math.round((elapsed / linear) * 100)) : 0;
-                      const inCliff = now < cliffEnd;
-                      const expired = now > v.endTime;
+                      const inCliff = nowSec < cliffEnd;
+                      const expired = nowSec > v.endTime;
                       const isClaiming = vestingClaiming === v.vestingId;
+                      const isRevealed = vestingRevealed.has(v.vestingId);
+
+                      // Schedule math
+                      const totalRaw = Number(v.amount || "0");
+                      const totalDec = totalRaw / 1e6;
+                      const postCliffSecs = Math.max(0, v.endTime - cliffEnd);
+                      const numReleases = v.releaseIntervalSecs > 0 ? Math.max(1, Math.floor(postCliffSecs / v.releaseIntervalSecs)) : 1;
+                      const amtPerRelease = totalDec / numReleases;
+                      const elapsedPostCliff = Math.max(0, nowSec - cliffEnd);
+                      const completedReleases = inCliff ? 0 : Math.min(numReleases, Math.floor(elapsedPostCliff / v.releaseIntervalSecs));
+                      const claimableNow = completedReleases * amtPerRelease;
+                      const pct = numReleases > 0 ? Math.round((completedReleases / numReleases) * 100) : 0;
+                      const intervalDays = Math.round(v.releaseIntervalSecs / 86400);
+                      const cliffMo = v.cliffSeconds > 0 ? Math.round(v.cliffSeconds / (30 * 86400)) : 0;
+                      const durationMo = Math.round((v.endTime - v.startTime) / (30 * 86400));
+
+                      // Timeline bars: cliff bars + release bars
+                      const cliffBars = cliffMo > 0 ? Math.min(cliffMo, 8) : 0;
+                      const releaseBars = Math.min(numReleases, 16);
+                      const bars = [
+                        ...Array.from({ length: cliffBars }, (_, i) => ({ type: "cliff" as const, idx: i })),
+                        ...Array.from({ length: releaseBars }, (_, i) => ({ type: "release" as const, idx: i, done: i < completedReleases, current: i === completedReleases && !inCliff && !expired })),
+                      ];
+
                       return (
-                        <div key={v.vestingId} style={{ background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 5, padding: "16px 18px" }}>
-                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-                            <div>
-                              <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ink)" }}>{v.name}</div>
-                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 3 }}>
-                                {`every ${v.releaseIntervalSecs / 86400}d · ${v.cliffSeconds > 0 ? `${v.cliffSeconds / (30 * 86400)}mo cliff · ` : ""}${v.endTime - v.startTime > 0 ? `${Math.round((v.endTime - v.startTime) / (30 * 86400))}mo total` : ""}`}
+                        <div key={v.vestingId} style={{ background: "var(--card)", border: `1.5px solid ${isRevealed ? "var(--accent)" : "var(--line)"}`, borderRadius: 6, overflow: "hidden", transition: "border-color .3s" }}>
+                          {/* Header */}
+                          <div style={{ padding: "18px 20px 14px", borderBottom: isRevealed ? "1px solid var(--line)" : "none" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+                              <div>
+                                <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: "var(--ink)", lineHeight: 1.1 }}>{v.name}</div>
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)", marginTop: 4 }}>
+                                  {cliffMo > 0 ? `${cliffMo}mo cliff · ` : ""}every {intervalDays}d · {durationMo}mo total · {v.symbol}
+                                </div>
                               </div>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, flexShrink: 0, color: inCliff ? "var(--accent)" : expired ? "var(--soft)" : "#6FAF8E", border: `1px solid ${inCliff ? "rgba(200,71,43,.4)" : expired ? "var(--line)" : "rgba(111,175,142,.5)"}`, background: inCliff ? "rgba(200,71,43,.06)" : expired ? "transparent" : "rgba(111,175,142,.08)", padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>
+                                {inCliff ? `CLIFF · ends ${new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : expired ? "EXPIRED" : `${pct}% VESTED`}
+                              </span>
                             </div>
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: inCliff ? "var(--accent)" : expired ? "var(--soft)" : "#6FAF8E", border: `1px solid ${inCliff ? "rgba(200,71,43,.4)" : expired ? "var(--line)" : "rgba(111,175,142,.5)"}`, padding: "3px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>
-                              {inCliff ? "IN CLIFF" : expired ? "EXPIRED" : `${pct}% VESTED`}
-                            </span>
+
+                            {/* Timeline bar chart */}
+                            <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 36, marginBottom: 6 }}>
+                              {bars.map((b, i) => (
+                                <div key={i} style={{ flex: 1, height: b.type === "cliff" ? "14px" : b.done ? "36px" : b.current ? "28px" : "18px", background: b.type === "cliff" ? "var(--line)" : b.done ? "#6FAF8E" : b.current ? "var(--accent)" : "var(--line)", borderRadius: "2px 2px 0 0", opacity: b.type === "cliff" ? 0.5 : b.done ? 0.85 : b.current ? 1 : 0.3, transition: "height .4s" }} />
+                              ))}
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)" }}>
+                              <span>Start</span>
+                              {!inCliff && !expired && <span style={{ color: "var(--accent)" }}>↑ now · {completedReleases}/{numReleases} released</span>}
+                              <span>End</span>
+                            </div>
                           </div>
-                          <div style={{ height: 4, background: "var(--line)", borderRadius: 2, overflow: "hidden", marginBottom: 10 }}>
-                            <div style={{ height: "100%", width: `${pct}%`, background: "#6FAF8E", borderRadius: 2, transition: "width .5s" }} />
-                          </div>
-                          <button
-                            onClick={async () => {
-                              if (!publicClient || !walletClient || isClaiming || inCliff) return;
-                              setVestingClaiming(v.vestingId);
-                              try {
-                                const manager = createConfidentialVestingManagerClient({ publicClient, walletClient, address: v.manager as Address });
-                                const { feeType, fee } = await manager.getFeeInfo();
-                                const hash = await manager.claim(
-                                  feeType === FeeType.Gas
-                                    ? { feeType, vestingId: v.vestingId as `0x${string}`, value: fee }
-                                    : { feeType, vestingId: v.vestingId as `0x${string}` }
-                                );
-                                await publicClient.waitForTransactionReceipt({ hash });
-                                setBalanceRefresh(n => n + 1);
-                                toast(`Claimed vested ${v.symbol}`, { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
-                              } catch (e) {
-                                toast(humanizeError(e), { kind: "error" });
-                              } finally {
-                                setVestingClaiming(null);
-                              }
-                            }}
-                            disabled={isClaiming || inCliff || expired}
-                            style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: inCliff || expired ? "var(--soft)" : "var(--ink)", border: `1px solid ${inCliff || expired ? "var(--line)" : "var(--ink)"}`, background: "transparent", padding: "7px 14px", borderRadius: 3, cursor: inCliff || expired ? "default" : "pointer", opacity: isClaiming ? 0.6 : 1 }}
-                          >
-                            {isClaiming ? "Claiming…" : inCliff ? `Cliff ends ${new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : expired ? "Expired" : "Claim vested amount →"}
-                          </button>
+
+                          {/* Revealed breakdown */}
+                          {isRevealed && (
+                            <div style={{ padding: "16px 20px", animation: "fd .25s ease both" }}>
+                              {/* Schedule table */}
+                              <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
+                                {[
+                                  ["Total allocation", `${fmtToken(BigInt(totalRaw))} ${v.symbol}`],
+                                  ["Per release", `${fmtToken(BigInt(Math.round(amtPerRelease * 1e6)))} ${v.symbol} every ${intervalDays}d`],
+                                  ["Number of releases", `${numReleases} total`],
+                                  ["Cliff ends", cliffMo > 0 ? new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "No cliff"],
+                                  ["Schedule ends", new Date(v.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })],
+                                ].map(([label, value], i, arr) => (
+                                  <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : "none" }}>
+                                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>{label}</span>
+                                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)" }}>{value}</span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Claimable now highlight */}
+                              {!inCliff && !expired && (
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: claimableNow > 0 ? "rgba(111,175,142,.1)" : "var(--overlay)", border: `1.5px solid ${claimableNow > 0 ? "rgba(111,175,142,.5)" : "var(--line)"}`, borderRadius: 4, marginBottom: 14 }}>
+                                  <div>
+                                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 4 }}>Claimable now</div>
+                                    <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: claimableNow > 0 ? "#6FAF8E" : "var(--soft)", lineHeight: 1 }}>
+                                      {fmtToken(BigInt(Math.round(claimableNow * 1e6)))}
+                                    </div>
+                                  </div>
+                                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)", textAlign: "right" }}>
+                                    <div>{completedReleases} of {numReleases}</div>
+                                    <div>releases vested</div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Claim button */}
+                              {inCliff ? (
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", textAlign: "center", padding: "10px 0" }}>
+                                  Cliff period active — first release on {new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                                </div>
+                              ) : expired ? (
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", textAlign: "center", padding: "10px 0" }}>Schedule ended</div>
+                              ) : claimableNow <= 0 ? (
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", textAlign: "center", padding: "10px 0" }}>
+                                  Next release in {Math.ceil((cliffEnd + (completedReleases + 1) * v.releaseIntervalSecs - nowSec) / 86400)}d
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={async () => {
+                                    if (!publicClient || !walletClient || isClaiming) return;
+                                    setVestingClaiming(v.vestingId);
+                                    try {
+                                      const manager = createConfidentialVestingManagerClient({ publicClient, walletClient, address: v.manager as Address });
+                                      const { feeType, fee } = await manager.getFeeInfo();
+                                      const hash = await manager.claim(
+                                        feeType === FeeType.Gas
+                                          ? { feeType, vestingId: v.vestingId as `0x${string}`, value: fee }
+                                          : { feeType, vestingId: v.vestingId as `0x${string}` }
+                                      );
+                                      await publicClient.waitForTransactionReceipt({ hash });
+                                      setBalanceRefresh(n => n + 1);
+                                      toast(`Claimed ${fmtToken(BigInt(Math.round(claimableNow * 1e6)))} ${v.symbol}`, { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
+                                    } catch (e) {
+                                      toast(humanizeError(e), { kind: "error" });
+                                    } finally {
+                                      setVestingClaiming(null);
+                                    }
+                                  }}
+                                  disabled={isClaiming}
+                                  style={{ width: "100%", background: "var(--ink)", color: "var(--page-bg)", padding: "14px", borderRadius: 3, fontSize: 15, fontWeight: 700, cursor: isClaiming ? "default" : "pointer", border: "none", opacity: isClaiming ? 0.6 : 1, transition: "opacity .2s" }}
+                                >
+                                  {isClaiming ? "Claiming…" : `Claim ${fmtToken(BigInt(Math.round(claimableNow * 1e6)))} ${v.symbol} →`}
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {/* View schedule CTA (collapsed state) */}
+                          {!isRevealed && (
+                            <div style={{ padding: "0 20px 16px" }}>
+                              <button
+                                onClick={() => setVestingRevealed(prev => new Set([...prev, v.vestingId]))}
+                                style={{ width: "100%", background: "transparent", border: "1.5px solid var(--accent)", color: "var(--accent)", padding: "11px", borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-mono)", letterSpacing: ".04em" }}
+                              >
+                                View schedule & claim →
+                              </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
