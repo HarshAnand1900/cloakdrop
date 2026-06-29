@@ -30,6 +30,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://cloakdrop.vercel.a
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  applicationName: "Sotto",
   title: {
     default: "Sotto — Confidential token distribution",
     template: "%s · Sotto",
