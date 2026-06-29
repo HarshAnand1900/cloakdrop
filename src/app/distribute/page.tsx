@@ -84,7 +84,8 @@ export default function DistributePage() {
   const [csvDragging, setCsvDragging] = useState(false);
   const [cliffMonths, setCliffMonths] = useState(6);
   const [vestingDuration, setVestingDuration] = useState(24);
-  const [releaseIntervalDays, setReleaseIntervalDays] = useState(30); // monthly by default
+  const [releaseIntervalDays, setReleaseIntervalDays] = useState(30);
+  const [initialUnlockPct, setInitialUnlockPct] = useState(0); // % that unlocks immediately when live (0-50)
   const [ensResolving, setEnsResolving] = useState(false);
 
   // Step 3 review
@@ -422,7 +423,7 @@ export default function DistributePage() {
           cliffSeconds: cliffSec,
           releaseIntervalSecs: releaseSec,
           timelockSeconds: 0,
-          initialUnlockBps: 0,
+          initialUnlockBps: Math.round(initialUnlockPct * 100), // e.g. 20% → 2000 bps
           cliffAmountBps: 0,
           isRevocable: false,
         }));
@@ -481,7 +482,7 @@ export default function DistributePage() {
       nav(3);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, walletClient, publicClient, zama, method, claimOpenDate, claimCloseDate, rows, total]);
+  }, [address, walletClient, publicClient, zama, method, claimOpenDate, claimCloseDate, cliffMonths, vestingDuration, releaseIntervalDays, initialUnlockPct, rows, total]);
 
   executeRef.current = execute;
 
@@ -664,6 +665,20 @@ export default function DistributePage() {
                       <input type="range" min={1} max={90} step={1} value={releaseIntervalDays} onChange={e => setReleaseIntervalDays(parseInt(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
                       <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)", marginTop: 3 }}>
                         <span>Daily</span><span>Weekly (7d)</span><span>Monthly (30d)</span><span>Quarterly (90d)</span>
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 14, padding: "12px 14px", background: initialUnlockPct > 0 ? "rgba(200,71,43,.06)" : "var(--overlay)", border: `1px solid ${initialUnlockPct > 0 ? "rgba(200,71,43,.3)" : "var(--line)"}`, borderRadius: 4, transition: "all .2s" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, color: "var(--mid)" }}>
+                          Initial unlock · <span style={{ color: initialUnlockPct > 0 ? "var(--accent)" : "var(--soft)", fontWeight: initialUnlockPct > 0 ? 600 : 400 }}>{initialUnlockPct}%</span>
+                        </div>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>
+                          {initialUnlockPct > 0 ? `${initialUnlockPct}% now · ${100 - initialUnlockPct}% on schedule` : "none — first release after interval"}
+                        </span>
+                      </div>
+                      <input type="range" min={0} max={50} step={5} value={initialUnlockPct} onChange={e => setInitialUnlockPct(parseInt(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)", marginTop: 3 }}>
+                        <span>None</span><span>10%</span><span>25%</span><span>50%</span>
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 72, overflow: "hidden", marginBottom: 6 }}>
