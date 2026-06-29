@@ -995,7 +995,10 @@ export default function ClaimPage() {
                                     await publicClient.waitForTransactionReceipt({ hash });
                                     setBalanceRefresh(n => n + 1);
                                     toast(`Claimed ${fmt2(claimableDecrypted)} ${v.symbol}`, { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
-                                  } catch (e) { toast(humanizeError(e), { kind: "error" }); } finally { setVestingClaiming(null); }
+                                  } catch (e) {
+                                    const msg = humanizeError(e);
+                                    toast(/fail|revert|insufficient/i.test(msg) ? "Claim failed — this vesting may not have been funded. Create a new vesting with the latest code." : msg, { kind: "error" });
+                                  } finally { setVestingClaiming(null); }
                                 }} disabled={isClaiming} style={{ width: "100%", background: "var(--ink)", color: "var(--page-bg)", padding: "17px", borderRadius: 3, fontSize: 15, fontWeight: 700, cursor: isClaiming ? "default" : "pointer", border: "none", opacity: isClaiming ? 0.6 : 1 }}>
                                   {isClaiming ? "Claiming…" : `Claim ${fmt2(claimableDecrypted)} ${v.symbol} →`}
                                 </button>
