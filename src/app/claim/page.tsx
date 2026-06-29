@@ -980,6 +980,10 @@ export default function ClaimPage() {
                                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", textAlign: "center", padding: "4px 0 8px" }}>
                                   {inCliff ? `First release: ${new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : expired ? "Schedule ended" : "No new releases yet"}
                                 </div>
+                              ) : address?.toLowerCase() !== v.recipient.toLowerCase() ? (
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textAlign: "center", padding: "12px", border: "1px solid rgba(200,71,43,.4)", borderRadius: 3, background: "rgba(200,71,43,.06)" }}>
+                                  Wrong wallet — this vesting belongs to {v.recipient.slice(0, 8)}…{v.recipient.slice(-6)}
+                                </div>
                               ) : (
                                 <button onClick={async () => {
                                   if (!publicClient || !walletClient || isClaiming) return;
