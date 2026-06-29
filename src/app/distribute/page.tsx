@@ -459,6 +459,7 @@ export default function DistributePage() {
           releaseIntervalSecs: releaseSec,
           symbol: CUSDT.symbol,
           amount: rows.find(r => r.recipient.toLowerCase() === ((log.args as { recipient: string }).recipient ?? "").toLowerCase())?.amount ?? "0",
+          initialUnlockBps: Math.round(initialUnlockPct * 100),
           createdAt: Date.now(),
         }));
         await fetch("/api/vestings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ vestings: vestingRecords }) });

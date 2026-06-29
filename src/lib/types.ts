@@ -64,8 +64,10 @@ export interface VestingRecord {
   releaseIntervalSecs: number;
   /** Token symbol. */
   symbol: string;
-  /** Plaintext amount in raw 6-dec units — admin dashboard only. */
+  /** Plaintext amount in human units — admin dashboard only. */
   amount: string;
+  /** Initial unlock in basis points (e.g. 1000 = 10% claimable immediately). */
+  initialUnlockBps: number;
   /** Creation timestamp (ms). */
   createdAt: number;
 }

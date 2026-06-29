@@ -113,7 +113,7 @@ export default function DashboardPage() {
   const [revokedSet, setRevokedSet] = useState<Set<string>>(new Set());
   const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null);
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "airdrops" | "disperses">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "airdrops" | "disperses" | "vestings">("all");
   const [recSort, setRecSort] = useState<"recent" | "recipients" | "claimed">("recent");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -126,6 +126,7 @@ export default function DashboardPage() {
   const [qrModal, setQrModal] = useState<string | null>(null);
   const [qrCopied, setQrCopied] = useState(false);
   const [disperses, setDisperses] = useState<{ txHash: string; name: string; symbol: string; recipients: string[]; createdAt: number }[]>([]);
+  const [vestingRecords, setVestingRecords] = useState<import("@/lib/types").VestingRecord[]>([]);
 
   useEffect(() => {
     if (!isConnected || !address) return;
@@ -135,11 +136,16 @@ export default function DashboardPage() {
       .then(data => setCampaigns(Array.isArray(data?.campaigns) ? data.campaigns : Array.isArray(data) ? data : []))
       .catch(() => setCampaigns([]))
       .finally(() => setLoading(false));
-    // Direct disperses created by this sender (separate from claim-based airdrops)
+    // Direct disperses created by this sender
     fetch(`/api/disperse?admin=${address}`)
       .then(r => r.json())
       .then(d => setDisperses(Array.isArray(d?.disperses) ? d.disperses : []))
       .catch(() => setDisperses([]));
+    // Vesting schedules created by this admin
+    fetch(`/api/vestings?admin=${address}`)
+      .then(r => r.json())
+      .then(d => setVestingRecords(Array.isArray(d?.vestings) ? d.vestings : []))
+      .catch(() => setVestingRecords([]));
     // Load saved webhook config
     fetch(`/api/webhook?admin=${address}`)
       .then(r => r.json())
@@ -461,9 +467,10 @@ export default function DashboardPage() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {([
-                  { key: "all", label: "All", count: campaigns.length + disperses.length },
+                  { key: "all", label: "All", count: campaigns.length + disperses.length + vestingRecords.length },
                   { key: "airdrops", label: "Airdrops", count: campaigns.length },
                   { key: "disperses", label: "Disperses", count: disperses.length },
+                  { key: "vestings", label: "Vestings", count: vestingRecords.length },
                 ] as const).map(f => (
                   <div key={f.key} onClick={() => setTypeFilter(f.key)} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 999, border: `1px solid ${typeFilter === f.key ? "var(--accent)" : "var(--line)"}`, background: typeFilter === f.key ? "rgba(200,71,43,.1)" : "transparent", color: typeFilter === f.key ? "var(--accent)" : "var(--soft)", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".03em", cursor: "pointer", transition: "all .2s" }}>
                     {f.label} <span style={{ opacity: .55 }}>{f.count}</span>
@@ -489,15 +496,19 @@ export default function DashboardPage() {
 
             {/* Unified table: airdrops + disperses sorted by recency */}
             {(() => {
-              const airdropRows = typeFilter !== "disperses"
+              const airdropRows = (typeFilter === "all" || typeFilter === "airdrops")
                 ? filtered.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.airdrop.toLowerCase().includes(search.toLowerCase()))
                 : [];
-              const disperseRows = typeFilter !== "airdrops"
+              const disperseRows = (typeFilter === "all" || typeFilter === "disperses")
                 ? disperses.filter(d => !search || d.name.toLowerCase().includes(search.toLowerCase()))
                 : [];
-              const rows: Array<{ kind: "airdrop"; c: Campaign; date: number } | { kind: "disperse"; d: typeof disperses[0]; date: number }> = [
+              const vestingRows = (typeFilter === "all" || typeFilter === "vestings")
+                ? vestingRecords.filter(v => !search || v.name.toLowerCase().includes(search.toLowerCase()))
+                : [];
+              const rows: Array<{ kind: "airdrop"; c: Campaign; date: number } | { kind: "disperse"; d: typeof disperses[0]; date: number } | { kind: "vesting"; v: import("@/lib/types").VestingRecord; date: number }> = [
                 ...airdropRows.map(c => ({ kind: "airdrop" as const, c, date: c.createdAt })),
                 ...disperseRows.map(d => ({ kind: "disperse" as const, d, date: d.createdAt })),
+                ...vestingRows.map(v => ({ kind: "vesting" as const, v, date: v.createdAt })),
               ].sort((a, b) => b.date - a.date);
 
               const isEmpty = rows.length === 0;
@@ -603,27 +614,58 @@ export default function DashboardPage() {
                         );
                       }
                       // DISPERSE row
-                      const d = row.d;
+                      if (row.kind === "disperse") {
+                        const d = row.d;
+                        return (
+                          <div key={d.txHash} style={{ borderBottom: "1px solid var(--line)", animation: `rowIn .45s ${(i * 0.07).toFixed(2)}s cubic-bezier(.22,.85,.2,1) both` }}>
+                            <div className="dash-row" style={{ display: "grid", gridTemplateColumns: "18px auto 2fr 0.7fr 1.2fr 0.9fr 0.8fr 0.9fr", gap: 12, alignItems: "center", padding: "15px 22px 15px 18px" }}>
+                              <span />
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "3px 7px", borderRadius: 3, whiteSpace: "nowrap" }}>DISPERSE</span>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                <span style={{ fontFamily: "var(--font-serif)", fontSize: 19, color: "var(--ink)" }}>{d.name}</span>
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{d.symbol} · push-based · no claim contract</span>
+                              </div>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{timeAgo(d.createdAt)}</span>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)" }}>{d.recipients.length}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ height: 11, width: 60, background: "var(--bar)", borderRadius: 1 }} />
+                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT</span>
+                              </div>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid rgba(111,175,142,.55)", background: "rgba(111,175,142,.1)", padding: "3px 9px", borderRadius: 999, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)" }} />Delivered
+                              </span>
+                              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                                <div onClick={() => setQrModal(`${typeof window !== "undefined" ? window.location.origin : ""}/claim`)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer" }}>Share</div>
+                                <a href={`https://sepolia.etherscan.io/tx/${d.txHash}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, textDecoration: "none", whiteSpace: "nowrap" }}>Tx ↗</a>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      // VESTING row
+                      const vr = row.v;
+                      const durationMoV = Math.round((vr.endTime - vr.startTime) / (30 * 86400));
+                      const intervalDaysV = Math.round(vr.releaseIntervalSecs / 86400);
                       return (
-                        <div key={d.txHash} style={{ borderBottom: "1px solid var(--line)", animation: `rowIn .45s ${(i * 0.07).toFixed(2)}s cubic-bezier(.22,.85,.2,1) both` }}>
+                        <div key={vr.vestingId} style={{ borderBottom: "1px solid var(--line)", animation: `rowIn .45s ${(i * 0.07).toFixed(2)}s cubic-bezier(.22,.85,.2,1) both` }}>
                           <div className="dash-row" style={{ display: "grid", gridTemplateColumns: "18px auto 2fr 0.7fr 1.2fr 0.9fr 0.8fr 0.9fr", gap: 12, alignItems: "center", padding: "15px 22px 15px 18px" }}>
                             <span />
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "3px 7px", borderRadius: 3, whiteSpace: "nowrap" }}>DISPERSE</span>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "#6FAF8E", border: "1px solid rgba(111,175,142,.5)", padding: "3px 7px", borderRadius: 3, whiteSpace: "nowrap" }}>VEST</span>
                             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                              <span style={{ fontFamily: "var(--font-serif)", fontSize: 19, color: "var(--ink)" }}>{d.name}</span>
-                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{d.symbol} · push-based · no claim contract</span>
+                              <span style={{ fontFamily: "var(--font-serif)", fontSize: 19, color: "var(--ink)" }}>{vr.name}</span>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{vr.symbol} · every {intervalDaysV}d · {durationMoV}mo total</span>
                             </div>
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{timeAgo(d.createdAt)}</span>
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)" }}>{d.recipients.length}</span>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--mid)" }}>{timeAgo(vr.createdAt)}</span>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)" }}>1</span>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <span style={{ height: 11, width: 60, background: "var(--bar)", borderRadius: 1 }} />
                               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--soft)" }}>cUSDT</span>
                             </div>
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--green)", border: "1px solid rgba(111,175,142,.55)", background: "rgba(111,175,142,.1)", padding: "3px 9px", borderRadius: 999, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 5 }}>
-                              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)" }} />Delivered
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#6FAF8E", border: "1px solid rgba(111,175,142,.55)", background: "rgba(111,175,142,.1)", padding: "3px 9px", borderRadius: 999, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />Active
                             </span>
                             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                              <a href={`https://sepolia.etherscan.io/tx/${d.txHash}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, textDecoration: "none", whiteSpace: "nowrap" }}>Tx ↗</a>
+                              <a href={`https://sepolia.etherscan.io/address/${vr.manager}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, textDecoration: "none", whiteSpace: "nowrap" }}>Manager ↗</a>
                             </div>
                           </div>
                         </div>
