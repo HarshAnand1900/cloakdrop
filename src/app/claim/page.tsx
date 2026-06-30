@@ -412,6 +412,12 @@ export default function ClaimPage() {
 
   useEffect(() => {
     if (!isConnected || !address) return;
+    // Clear immediately on address change — closes the race window where stale
+    // data from a previous account could render before the new fetch resolves.
+    setDisperses([]);
+    setVestings([]);
+    setVestingRevealed(new Set());
+    setVestingUnlocked({});
     loadClaims(address);
     // Also load direct-disperse history
     setDisperseLoading(true);
@@ -420,10 +426,14 @@ export default function ClaimPage() {
       .then(d => setDisperses(Array.isArray(d?.disperses) ? d.disperses : []))
       .catch(() => setDisperses([]))
       .finally(() => setDisperseLoading(false));
-    // Load vesting schedules
+    // Load vesting schedules — hard-filter by connected address client-side too,
+    // so a stale fetch (e.g. mid account-switch) can never display another wallet's data.
     fetch(`/api/vestings?recipient=${address}`)
       .then(r => r.json())
-      .then(d => setVestings(Array.isArray(d?.vestings) ? d.vestings : []))
+      .then(d => {
+        const all = Array.isArray(d?.vestings) ? d.vestings : [];
+        setVestings(all.filter((v: { recipient: string }) => v.recipient?.toLowerCase() === address.toLowerCase()));
+      })
       .catch(() => setVestings([]));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, address, preselectedId]);
