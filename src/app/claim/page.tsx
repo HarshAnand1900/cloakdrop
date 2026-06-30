@@ -490,6 +490,23 @@ export default function ClaimPage() {
 
   const activeClaim = claims[activeIdx];
 
+  // Unified header state — considers airdrop claims, vestings, AND disperses,
+  // not just airdrop claims, so the header is accurate regardless of distribution type.
+  const pendingClaimsCount = claims.filter(c => !claimedMap[c.airdrop.toLowerCase()]).length;
+  const liveCount = pendingClaimsCount + vestings.length; // actionable right now
+  const totalActivityCount = claims.length + disperses.length + vestings.length; // all-time history
+  const hasAnyLive = liveCount > 0;
+  const hasAnyHistory = totalActivityCount > 0;
+  // Most recent item across all types, for the "all caught up" message.
+  const mostRecent = (() => {
+    const items: { label: string; kind: string }[] = [
+      ...claims.map(c => ({ label: c.name || "Distribution", kind: "claim" })),
+      ...disperses.map(d => ({ label: d.name, kind: "disperse" })),
+      ...vestings.map(v => ({ label: v.name, kind: "vesting" })),
+    ];
+    return items[0] ?? null;
+  })();
+
   return (
     <>
       <AppShell tag="CLAIM" />
@@ -563,14 +580,21 @@ export default function ClaimPage() {
               <div style={{ textAlign: "center", marginBottom: 16 }}>
                 <div className="s-label" style={{ marginBottom: 10 }}>Claim an allocation</div>
                 <h2 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: 42, color: "var(--ink)", margin: 0, letterSpacing: "-.015em" }}>
-                  {checking ? "Checking eligibility" : claims.length > 0 ? "You're on the list" : "No airdrop claims found"}
+                  {checking ? "Checking eligibility" : hasAnyLive ? "You're on the list" : hasAnyHistory ? "All caught up" : "No distributions found"}
                 </h2>
                 <p style={{ fontSize: 15, color: "var(--mid)", margin: "9px auto 0", maxWidth: 420, lineHeight: 1.55 }}>
                   {checking
                     ? "Scanning sealed distributions…"
-                    : claims.length > 0
-                    ? `${claims.length} sealed allocation${claims.length > 1 ? "s" : ""} waiting. Decrypt to reveal your amount.`
-                    : "No airdrop claims for this address. Check your balance for direct disperses."}
+                    : hasAnyLive
+                    ? (() => {
+                        const parts: string[] = [];
+                        if (pendingClaimsCount > 0) parts.push(`${pendingClaimsCount} sealed claim${pendingClaimsCount > 1 ? "s" : ""}`);
+                        if (vestings.length > 0) parts.push(`${vestings.length} vesting schedule${vestings.length > 1 ? "s" : ""}`);
+                        return `${parts.join(" · ")} waiting. Decrypt to reveal your amount.`;
+                      })()
+                    : hasAnyHistory
+                    ? `Nothing new right now${mostRecent ? ` — your last activity was "${mostRecent.label}"` : ""}. Check Activity for full history.`
+                    : "No distributions for this address yet. Check your balance for direct disperses."}
                 </p>
               </div>
 
@@ -741,7 +765,7 @@ export default function ClaimPage() {
               {!checking && (claims.length > 0 || disperses.length > 0 || vestings.length > 0) && (
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
                   <div style={{ display: "inline-flex", padding: 3, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 999 }}>
-                    {([["allocation", `Allocation · ${claims.length + vestings.length}`], ["activity", `Activity · ${claims.length + disperses.length}`]] as const).map(([v, label]) => (
+                    {([["allocation", `Allocation · ${claims.length + vestings.length}`], ["activity", `Activity · ${claims.length + disperses.length + vestings.length}`]] as const).map(([v, label]) => (
                       <div key={v} onClick={() => setClaimView(v)} style={{ padding: "7px 18px", borderRadius: 999, background: claimView === v ? "var(--ink)" : "transparent", color: claimView === v ? "var(--page-bg)" : "var(--mid)", fontFamily: "var(--font-mono)", fontSize: 11.5, letterSpacing: ".04em", cursor: "pointer", transition: "all .2s", whiteSpace: "nowrap" }}>
                         {label}
                       </div>
@@ -1249,7 +1273,8 @@ export default function ClaimPage() {
                         };
                       })
                       .filter(r => claimTab === "all" || (claimTab === "pending" && r.status === "pending") || (claimTab === "claimed" && r.status === "claimed"));
-                    const disperseRows = (claimTab === "all")
+                    // Disperses are inherently "received/done" — show under All and Claimed.
+                    const disperseRows = (claimTab === "all" || claimTab === "claimed")
                       ? disperses.map((d, i) => ({
                           kind: "disperse" as const,
                           key: `disperse-${i}`,
@@ -1261,7 +1286,8 @@ export default function ClaimPage() {
                           createdAt: d.createdAt,
                         }))
                       : [];
-                    const vestingRows = (claimTab === "all")
+                    // Vestings are ongoing/actionable — show under All and Pending.
+                    const vestingRows = (claimTab === "all" || claimTab === "pending")
                       ? vestings.map((v, vi) => ({
                           kind: "vesting" as const,
                           key: `vesting-${vi}`,
