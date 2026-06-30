@@ -251,4 +251,4 @@ Result: **2 MetaMask interactions total** (1 sign + 1 deploy tx) for any number 
 
 ---
 
-Built for **Zama Developer Program Mainnet Season 3** · Special Bounty × TokenOps · Prize: 2,500 cUSDT
+Built for **Zama Developer Program Mainnet Season 3** · Special Bounty × TokenOps · 
