@@ -23,7 +23,7 @@ export default function DocsPage() {
 
   const sections = [
     { id: "overview", label: "Overview" },
-    { id: "flows", label: "The two flows" },
+    { id: "flows", label: "The three flows" },
     { id: "privacy", label: "How privacy works" },
     { id: "claiming", label: "Claiming" },
     { id: "webhooks", label: "Webhooks" },
@@ -79,8 +79,8 @@ export default function DocsPage() {
           </section>
 
           <section id="flows" style={{ marginBottom: 56, scrollMarginTop: 24 }}>
-            <Label>The two flows</Label>
-            <H>Airdrop vs Disperse</H>
+            <Label>The three flows</Label>
+            <H>Airdrop, Disperse, or Vesting</H>
             <div style={{ display: "grid", gap: 14 }}>
               <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "18px 20px" }}>
                 <div style={{ fontFamily: "var(--font-serif)", fontSize: 21, color: "var(--ink)", marginBottom: 4 }}>🪂 Airdrop — claim-based</div>
@@ -91,6 +91,11 @@ export default function DocsPage() {
                 <div style={{ fontFamily: "var(--font-serif)", fontSize: 21, color: "var(--ink)", marginBottom: 4 }}>📦 Disperse — direct push</div>
                 <P>For a known list you want to pay immediately. All amounts are encrypted in one batch and pushed straight into each recipient&apos;s confidential balance in a single transaction — no claim step needed.</P>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>Best for: payroll, investor distributions, instant payouts.</div>
+              </div>
+              <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "18px 20px" }}>
+                <div style={{ fontFamily: "var(--font-serif)", fontSize: 21, color: "var(--ink)", marginBottom: 4 }}>📈 Vesting — scheduled unlock</div>
+                <P>For allocations that should release gradually instead of all at once. A vesting manager contract is deployed per distribution; each recipient gets a linear schedule with an optional cliff, a configurable release interval, and an optional instant unlock percentage. A different TokenOps module (<Mono>fhe-vesting</Mono>) and contract type from airdrop — recipients claim whatever has vested so far, anytime, repeatedly.</P>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>Best for: team grants, scheduled payroll, time-locked allocations.</div>
               </div>
             </div>
           </section>
@@ -120,12 +125,25 @@ export default function DocsPage() {
           <section id="claiming" style={{ marginBottom: 56, scrollMarginTop: 24 }}>
             <Label>Claiming</Label>
             <H>How a recipient claims</H>
-            <P>Recipients open the Claim page (or a shared deep-link / QR), connect their wallet, and Sotto checks eligibility. The decryption ceremony runs in three local steps:</P>
+            <P>All three flows show up on one Claim page, merged into the same allocation tabs. The reveal mechanic differs per flow:</P>
+
+            <div style={{ fontFamily: "var(--font-serif)", fontSize: 18, color: "var(--ink)", margin: "18px 0 8px" }}>🪂 Airdrop</div>
             <ol style={{ fontSize: 14.5, color: "var(--mid)", lineHeight: 1.8, paddingLeft: 20, margin: "0 0 14px" }}>
               <li><strong style={{ color: "var(--ink)" }}>Prove your key</strong> — your wallet signs to prove you&apos;re the rightful recipient.</li>
-              <li><strong style={{ color: "var(--ink)" }}>Grant + decrypt</strong> — an ACL-grant tx unlocks the handle, then it&apos;s decrypted in your browser. No server sees the number.</li>
+              <li><strong style={{ color: "var(--ink)" }}>Grant + decrypt</strong> — <Mono>getClaimAmount</Mono> grants ACL on the handle, then <Mono>useUserDecrypt</Mono> decrypts it locally. No server sees the number.</li>
               <li><strong style={{ color: "var(--ink)" }}>Claim to wallet</strong> — a single tx moves the sealed amount into your confidential balance.</li>
             </ol>
+
+            <div style={{ fontFamily: "var(--font-serif)", fontSize: 18, color: "var(--ink)", margin: "18px 0 8px" }}>📦 Disperse</div>
+            <P>No claim step — the sealed amount is already in your confidential balance. Open the balance card on the Claim page and decrypt anytime to read the total.</P>
+
+            <div style={{ fontFamily: "var(--font-serif)", fontSize: 18, color: "var(--ink)", margin: "18px 0 8px" }}>📈 Vesting</div>
+            <ol style={{ fontSize: 14.5, color: "var(--mid)", lineHeight: 1.8, paddingLeft: 20, margin: "0 0 14px" }}>
+              <li><strong style={{ color: "var(--ink)" }}>Declassify the schedule</strong> — sign a message proving wallet ownership to reveal your total allocation, per-release amount, and what&apos;s currently claimable.</li>
+              <li><strong style={{ color: "var(--ink)" }}>Preflight check</strong> — a free, read-only on-chain check confirms the claim will succeed (correct recipient, timelock elapsed, sufficient fee balance) before you spend any gas.</li>
+              <li><strong style={{ color: "var(--ink)" }}>Claim vested portion</strong> — claim whatever has vested so far; come back after each release interval to claim more.</li>
+            </ol>
+
             <P>Distributors can share a per-distribution link (<Mono>/claim?id=0x…</Mono>) or QR code that lands the recipient directly on their allocation.</P>
           </section>
 
@@ -185,6 +203,8 @@ export default function DocsPage() {
                 ["GET /api/campaigns?airdrop=0x…", "Returns a single distribution by contract address."],
                 ["GET /api/claims?recipient=0x…", "Returns all claim records for an address (used by recipients)."],
                 ["GET /api/disperse?recipient=0x…", "Returns all direct-disperse records for a recipient address."],
+                ["GET /api/vestings?recipient=0x…", "Returns all vesting schedules for a recipient address."],
+                ["GET /api/vestings?admin=0x…", "Returns all vesting schedules created by an admin address."],
                 ["PUT /api/webhook", "Fires the stored webhook for the given admin. Called internally on claim."],
                 ["GET /api/webhook?admin=0x…", "Returns the stored webhook config for an admin address."],
               ].map(([route, desc], i, arr) => (
@@ -199,7 +219,7 @@ export default function DocsPage() {
           <section id="stack" style={{ marginBottom: 56, scrollMarginTop: 24 }}>
             <Label>Stack & addresses</Label>
             <H>Built on</H>
-            <P>Next.js · wagmi · viem · RainbowKit · <Mono>@tokenops/sdk</Mono> (fhe-airdrop + fhe-disperse) · <Mono>@zama-fhe/sdk</Mono> + <Mono>@zama-fhe/react-sdk</Mono> · Upstash Redis.</P>
+            <P>Next.js · wagmi · viem · RainbowKit · <Mono>@tokenops/sdk</Mono> (fhe-airdrop + fhe-disperse + fhe-vesting) · <Mono>@zama-fhe/sdk</Mono> + <Mono>@zama-fhe/react-sdk</Mono> · Upstash Redis.</P>
             <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 4, padding: "6px 18px", marginTop: 8 }}>
               {[
                 ["cUSDT wrapper (official Zama Sepolia)", CUSDT.wrapper],
@@ -225,6 +245,8 @@ export default function DocsPage() {
               ["What if I list the same address twice?", "The amounts are summed into one allocation (on-chain, each recipient holds a single sealed amount per airdrop). Sotto shows a merge notice."],
               ["Is the claim window enforced?", "Yes — set a time lock and claims are blocked on-chain until that date. The window is a real contract parameter."],
               ["What happens to unclaimed funds?", "The distributor can Revoke a distribution, which calls withdraw() on-chain to sweep all unclaimed sealed tokens back to their wallet. Already-claimed recipients are unaffected."],
+              ["How is vesting different from a time-locked airdrop?", "An airdrop's claim window gates a single, full-amount claim. Vesting releases the allocation progressively — a cliff period (optional), then a fraction unlocks every release interval, claimable repeatedly as more vests."],
+              ["Why does an airdrop only ever ask for one signature, not one per recipient?", "Sotto derives a temporary in-browser signing key from a single wallet signature (keccak256 of the signature → a local private key). That ephemeral key signs every recipient's claim authorization without further wallet prompts, then is discarded. See \"Session key signing\" in the README."],
               ["Is this mainnet?", "It runs on Ethereum Sepolia with the official cUSDT (ERC-7984) test token, per the bounty spec."],
             ].map(([q, a]) => (
               <div key={q} style={{ marginBottom: 18 }}>
