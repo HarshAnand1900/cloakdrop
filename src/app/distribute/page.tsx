@@ -798,12 +798,6 @@ export default function DistributePage() {
                   </div>
                 )}
 
-                {/* (Vesting schedule is configured in Step 1 — see summary banner above) */}
-                {false && (
-                  <div>
-                  </div>
-                )}
-
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div onClick={() => nav(1)} style={{ fontSize: 14, color: "var(--mid)", cursor: "pointer" }}>← Back</div>
                   <button

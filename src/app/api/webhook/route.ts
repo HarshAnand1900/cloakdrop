@@ -12,6 +12,25 @@ function getRedis(): Redis | null {
   return new Redis({ url, token });
 }
 
+/** Blocks SSRF: only public http(s) hosts may be used as a webhook target. */
+function isSafeWebhookUrl(raw: string): boolean {
+  let u: URL;
+  try { u = new URL(raw); } catch { return false; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  const host = u.hostname.toLowerCase();
+  if (host === "localhost" || host === "0.0.0.0" || host === "::1" || host.endsWith(".local")) return false;
+  // Block loopback, link-local, and RFC1918 private ranges.
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (ipv4) {
+    const [a, b] = ipv4.slice(1).map(Number);
+    if (a === 127 || a === 10 || a === 0) return false;
+    if (a === 169 && b === 254) return false; // link-local / cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return false;
+    if (a === 192 && b === 168) return false;
+  }
+  return true;
+}
+
 /** GET /api/webhook?admin=0x... → { url, enabled } */
 export async function GET(req: NextRequest) {
   const admin = req.nextUrl.searchParams.get("admin");
@@ -30,6 +49,9 @@ export async function POST(req: NextRequest) {
   if (!body?.admin || !isAddress(body.admin)) {
     return NextResponse.json({ error: "admin required" }, { status: 400 });
   }
+  if (body.url && !isSafeWebhookUrl(body.url)) {
+    return NextResponse.json({ error: "webhook url must be a public http(s) endpoint" }, { status: 400 });
+  }
   const redis = getRedis();
   if (!redis) return NextResponse.json({ ok: false, error: "no storage backend" }, { status: 503 });
   await redis.set(`webhook:${body.admin.toLowerCase()}`, { url: body.url ?? "", enabled: !!body.enabled });
@@ -47,6 +69,7 @@ export async function PUT(req: NextRequest) {
 
   const wh = await redis.get<{ url: string; enabled: boolean }>(`webhook:${body.admin.toLowerCase()}`);
   if (!wh?.url || !wh.enabled) return NextResponse.json({ fired: false, reason: "not configured" });
+  if (!isSafeWebhookUrl(wh.url)) return NextResponse.json({ fired: false, reason: "blocked: unsafe webhook url" });
 
   const payload = {
     event: "claim",
