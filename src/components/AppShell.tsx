@@ -31,15 +31,22 @@ export function AppShell({ tag }: { tag?: string } = {}) {
   }, []);
   const isDark = sotto.mode === "dark";
 
-  // Real activity count for the bell badge.
+  // Real activity count for the bell badge — airdrops + disperses + vestings combined.
   const [activityCount, setActivityCount] = useState(0);
   useEffect(() => {
     if (!isConnected || !address) { setActivityCount(0); return; }
-    fetch(`/api/campaigns?admin=${address}`)
-      .then(r => r.json())
-      .then(d => setActivityCount(Array.isArray(d?.campaigns) ? d.campaigns.length : 0))
-      .catch(() => setActivityCount(0));
-  }, [isConnected, address]);
+    Promise.all([
+      fetch(`/api/campaigns?admin=${address}`).then(r => r.json()).catch(() => ({ campaigns: [] })),
+      fetch(`/api/disperse?admin=${address}`).then(r => r.json()).catch(() => ({ disperses: [] })),
+      fetch(`/api/vestings?admin=${address}`).then(r => r.json()).catch(() => ({ vestings: [] })),
+    ]).then(([c, d, v]) => {
+      const n = (Array.isArray(c?.campaigns) ? c.campaigns.length : 0)
+        + (Array.isArray(d?.disperses) ? d.disperses.length : 0)
+        + (Array.isArray(v?.vestings) ? v.vestings.length : 0);
+      setActivityCount(n);
+    }).catch(() => setActivityCount(0));
+  // Re-fetch whenever the notif panel opens, so the badge/list never goes stale.
+  }, [isConnected, address, sotto.showNotif]);
 
   const nav = [
     { label: "New distribution", href: "/distribute" },
@@ -290,27 +297,47 @@ function NotifDrawer() {
   const [notifs, setNotifs] = useState<{ title: string; time: string; dot: string; glow: boolean }[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Build REAL activity from the connected admin's campaigns.
+  // Build REAL activity from the connected admin's airdrops + disperses + vestings.
+  // Re-fetches every time the drawer opens so it's never stale.
   useEffect(() => {
     if (!address) { setLoaded(true); return; }
-    fetch(`/api/campaigns?admin=${address}`)
-      .then(r => r.json())
-      .then(d => {
-        const campaigns = Array.isArray(d?.campaigns) ? d.campaigns : [];
-        const items = campaigns
-          .sort((a: { createdAt: number }, b: { createdAt: number }) => b.createdAt - a.createdAt)
-          .slice(0, 6)
-          .map((c: { name: string; recipientCount: number; createdAt: number }, i: number) => ({
-            title: `${c.name} sealed · ${c.recipientCount} recipient${c.recipientCount === 1 ? "" : "s"} ready to claim`,
-            time: timeAgo(c.createdAt),
-            dot: i === 0 ? "var(--accent)" : "#6FAF8E",
-            glow: i === 0,
-          }));
-        setNotifs(items);
-      })
+    setLoaded(false);
+    Promise.all([
+      fetch(`/api/campaigns?admin=${address}`).then(r => r.json()).catch(() => ({ campaigns: [] })),
+      fetch(`/api/disperse?admin=${address}`).then(r => r.json()).catch(() => ({ disperses: [] })),
+      fetch(`/api/vestings?admin=${address}`).then(r => r.json()).catch(() => ({ vestings: [] })),
+    ]).then(([c, d, v]) => {
+      const campaigns = Array.isArray(c?.campaigns) ? c.campaigns : [];
+      const disperses = Array.isArray(d?.disperses) ? d.disperses : [];
+      const vestings = Array.isArray(v?.vestings) ? v.vestings : [];
+
+      type Item = { title: string; createdAt: number };
+      const items: Item[] = [
+        ...campaigns.map((c: { name: string; recipientCount: number; createdAt: number }) => ({
+          title: `${c.name} sealed · ${c.recipientCount} recipient${c.recipientCount === 1 ? "" : "s"} ready to claim`,
+          createdAt: c.createdAt,
+        })),
+        ...disperses.map((d: { name: string; recipients: string[]; createdAt: number }) => ({
+          title: `${d.name} dispersed · sent directly to ${d.recipients.length} wallet${d.recipients.length === 1 ? "" : "s"}`,
+          createdAt: d.createdAt,
+        })),
+        ...vestings.map((v: { name: string; createdAt: number }) => ({
+          title: `${v.name} vesting created · schedule is live`,
+          createdAt: v.createdAt,
+        })),
+      ];
+
+      const sorted = items.sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
+      setNotifs(sorted.map((it, i) => ({
+        title: it.title,
+        time: timeAgo(it.createdAt),
+        dot: i === 0 ? "var(--accent)" : "#6FAF8E",
+        glow: i === 0,
+      })));
+    })
       .catch(() => setNotifs([]))
       .finally(() => setLoaded(true));
-  }, [address]);
+  }, [address, sotto.showNotif]);
 
   return (
     <>
