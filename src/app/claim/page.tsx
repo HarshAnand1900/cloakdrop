@@ -871,6 +871,16 @@ export default function ClaimPage() {
                                   setVestingClaiming(v.vestingId);
                                   try {
                                     const manager = createConfidentialVestingManagerClient({ publicClient, walletClient, address: v.manager as Address });
+                                    // Read-only preflight, no gas — surfaces the EXACT reason a claim would
+                                    // fail (insufficient ETH for the FeeType.Gas fee, timelock not elapsed,
+                                    // wrong recipient, paused, etc.) before spending any gas on a failing tx.
+                                    const preflight = await manager.preflightClaim({ vestingId: v.vestingId as `0x${string}`, caller: address as Address });
+                                    if (!preflight.ready) {
+                                      const msg = preflight.blockers[0]?.message ?? "Claim is not available yet.";
+                                      toast(msg, { kind: "error" });
+                                      setVestingClaiming(null);
+                                      return;
+                                    }
                                     const { feeType, fee } = await manager.getFeeInfo();
                                     const hash = await manager.claim(feeType === FeeType.Gas ? { feeType, vestingId: v.vestingId as `0x${string}`, value: fee } : { feeType, vestingId: v.vestingId as `0x${string}` });
                                     await publicClient.waitForTransactionReceipt({ hash });
