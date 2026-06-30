@@ -957,9 +957,11 @@ export default function ClaimPage() {
                           {/* Amounts — only shown after wallet signature ownership proof */}
                           {vestingUnlocked[v.vestingId] !== undefined ? (() => {
                             const unlockedTotal = vestingUnlocked[v.vestingId];
+                            const unlockedInitialAmt = unlockedTotal * initialUnlockBps / 10000;
+                            const unlockedScheduledAmt = unlockedTotal - unlockedInitialAmt;
                             const totalFmt = fmt2(unlockedTotal);
-                            const perReleaseFmt = fmt2(unlockedTotal / numReleases);
-                            const claimableDecrypted = completedReleases * (unlockedTotal / numReleases);
+                            const perReleaseFmt = fmt2(unlockedScheduledAmt / numReleases);
+                            const claimableDecrypted = unlockedInitialAmt + completedReleases * (unlockedScheduledAmt / numReleases);
                             return (<>
                               <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
                                 {[

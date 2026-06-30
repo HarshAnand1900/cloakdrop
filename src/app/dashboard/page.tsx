@@ -126,6 +126,8 @@ export default function DashboardPage() {
   const [qrModal, setQrModal] = useState<string | null>(null);
   const [qrCopied, setQrCopied] = useState(false);
   const [disperses, setDisperses] = useState<{ txHash: string; name: string; symbol: string; recipients: string[]; createdAt: number }[]>([]);
+  const [detailDisperse, setDetailDisperse] = useState<typeof disperses[0] | null>(null);
+  const [detailVesting, setDetailVesting] = useState<import("@/lib/types").VestingRecord | null>(null);
   const [vestingRecords, setVestingRecords] = useState<import("@/lib/types").VestingRecord[]>([]);
 
   useEffect(() => {
@@ -635,8 +637,8 @@ export default function DashboardPage() {
                                 <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)" }} />Delivered
                               </span>
                               <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                                <div onClick={() => setDetailDisperse(d)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer" }}>Details</div>
                                 <div onClick={() => setQrModal(`${typeof window !== "undefined" ? window.location.origin : ""}/claim`)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer" }}>Share</div>
-                                <a href={`https://sepolia.etherscan.io/tx/${d.txHash}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, textDecoration: "none", whiteSpace: "nowrap" }}>Tx ↗</a>
                               </div>
                             </div>
                           </div>
@@ -665,7 +667,7 @@ export default function DashboardPage() {
                               <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#6FAF8E" }} />Active
                             </span>
                             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                              <a href={`https://sepolia.etherscan.io/address/${vr.manager}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "4px 9px", borderRadius: 2, textDecoration: "none", whiteSpace: "nowrap" }}>Manager ↗</a>
+                              <div onClick={() => setDetailVesting(vr)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer" }}>Details</div>
                             </div>
                           </div>
                         </div>
@@ -900,6 +902,73 @@ export default function DashboardPage() {
                 </button>
               )}
               <button onClick={() => setQrModal(null)} style={{ padding: "11px 16px", border: "1.5px solid var(--line)", color: "var(--mid)", borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 12, cursor: "pointer", background: "none" }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disperse details modal */}
+      {detailDisperse && (
+        <div onClick={() => setDetailDisperse(null)} style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(6,5,4,.55)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fd .2s ease both" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 480, background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 7, boxShadow: "0 60px 120px rgba(0,0,0,.5)", animation: "up .3s cubic-bezier(.22,.85,.2,1) both" }}>
+            <div style={{ background: "var(--overlay)", borderBottom: "1px solid var(--line)", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderRadius: "7px 7px 0 0" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--accent)", border: "1px solid rgba(200,71,43,.4)", padding: "3px 7px", borderRadius: 3 }}>DISPERSE</span>
+              <div onClick={() => setDetailDisperse(null)} style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", cursor: "pointer" }}>✕</div>
+            </div>
+            <div style={{ padding: "24px 28px" }}>
+              <div style={{ fontFamily: "var(--font-serif)", fontSize: 24, color: "var(--ink)", marginBottom: 16 }}>{detailDisperse.name}</div>
+              {([
+                ["Transaction", shortAddr(detailDisperse.txHash, 10)],
+                ["Token", detailDisperse.symbol],
+                ["Recipients", String(detailDisperse.recipients.length)],
+                ["Created", new Date(detailDisperse.createdAt).toLocaleString("en-GB")],
+                ["Status", "✓ Delivered — sealed balances sent directly"],
+              ] as [string, string][]).map(([label, value]) => (
+                <div key={label} style={{ display: "grid", gridTemplateColumns: "140px 1fr", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>{label}</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)", wordBreak: "break-all" }}>{value}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: 16, fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 10 }}>Recipients</div>
+              <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, padding: "12px 14px", maxHeight: 180, overflowY: "auto" }}>
+                {detailDisperse.recipients.map((r, i) => (
+                  <div key={i} style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--mid)", padding: "5px 0" }}>{shortAddr(r, 8)}</div>
+                ))}
+              </div>
+              <a href={`https://sepolia.etherscan.io/tx/${detailDisperse.txHash}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 18, textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>View on Etherscan ↗</a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vesting details modal */}
+      {detailVesting && (
+        <div onClick={() => setDetailVesting(null)} style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(6,5,4,.55)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fd .2s ease both" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 480, background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 7, boxShadow: "0 60px 120px rgba(0,0,0,.5)", animation: "up .3s cubic-bezier(.22,.85,.2,1) both" }}>
+            <div style={{ background: "var(--overlay)", borderBottom: "1px solid var(--line)", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderRadius: "7px 7px 0 0" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "#6FAF8E", border: "1px solid rgba(111,175,142,.5)", padding: "3px 7px", borderRadius: 3 }}>VESTING</span>
+              <div onClick={() => setDetailVesting(null)} style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", cursor: "pointer" }}>✕</div>
+            </div>
+            <div style={{ padding: "24px 28px" }}>
+              <div style={{ fontFamily: "var(--font-serif)", fontSize: 24, color: "var(--ink)", marginBottom: 16 }}>{detailVesting.name}</div>
+              {([
+                ["Recipient", shortAddr(detailVesting.recipient, 10)],
+                ["Manager contract", shortAddr(detailVesting.manager, 10)],
+                ["Vesting ID", shortAddr(detailVesting.vestingId, 10)],
+                ["Token", detailVesting.symbol],
+                ["Cliff", detailVesting.cliffSeconds > 0 ? `${Math.round(detailVesting.cliffSeconds / (30 * 86400))}mo` : "None"],
+                ["Release interval", `Every ${Math.round(detailVesting.releaseIntervalSecs / 86400)}d`],
+                ["Initial unlock", `${(detailVesting.initialUnlockBps || 0) / 100}%`],
+                ["Starts", new Date(detailVesting.startTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })],
+                ["Ends", new Date(detailVesting.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })],
+                ["Created", new Date(detailVesting.createdAt).toLocaleString("en-GB")],
+              ] as [string, string][]).map(([label, value]) => (
+                <div key={label} style={{ display: "grid", gridTemplateColumns: "140px 1fr", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)" }}>{label}</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink)", wordBreak: "break-all" }}>{value}</span>
+                </div>
+              ))}
+              <a href={`https://sepolia.etherscan.io/address/${detailVesting.manager}`} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 18, textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>View manager contract on Etherscan ↗</a>
             </div>
           </div>
         </div>
