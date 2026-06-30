@@ -668,6 +668,7 @@ export default function DashboardPage() {
                             </span>
                             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                               <div onClick={() => setDetailVesting(vr)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer" }}>Details</div>
+                              <div onClick={() => setQrModal(`${typeof window !== "undefined" ? window.location.origin : ""}/claim`)} style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--mid)", border: "1px solid var(--line)", padding: "4px 9px", borderRadius: 2, cursor: "pointer" }}>Share</div>
                             </div>
                           </div>
                         </div>
