@@ -279,9 +279,15 @@ export default function DistributePage() {
         const startTimestamp = claimOpenDate
           ? Math.floor(new Date(claimOpenDate).getTime() / 1000)
           : now - 60; // default: open immediately
-        const endTimestamp = claimCloseDate
+        let endTimestamp = claimCloseDate
           ? Math.floor(new Date(claimCloseDate).getTime() / 1000)
           : now + 60 * 60 * 24 * 30; // default: 30 days
+        // Defensive guard: the contract reverts with EndTimeInPast if endTimestamp <= now,
+        // and presumably also requires end > start. Never let a stale/invalid date field
+        // reach the chain — silently fall back to a safe window instead of failing the tx.
+        if (endTimestamp <= now || endTimestamp <= startTimestamp) {
+          endTimestamp = Math.max(now, startTimestamp) + 60 * 60 * 24 * 30;
+        }
         const { hash, airdrop } = await factory.createAndFundConfidentialAirdrop({
           params: { token, startTimestamp, endTimestamp, canExtendClaimWindow: true, admin: sessionAccount.address },
           userSalt: randomSalt(),
@@ -711,6 +717,22 @@ export default function DistributePage() {
                         <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 4 }}>Default: 30 days from now</div>
                       </div>
                     </div>
+                    {(() => {
+                      const nowMs = Date.now();
+                      const openMs = claimOpenDate ? new Date(claimOpenDate).getTime() : null;
+                      const closeMs = claimCloseDate ? new Date(claimCloseDate).getTime() : null;
+                      const closeInPast = closeMs !== null && closeMs <= nowMs;
+                      const closeBeforeOpen = closeMs !== null && openMs !== null && closeMs <= openMs;
+                      if (!closeInPast && !closeBeforeOpen) return null;
+                      return (
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 9, marginTop: 12, padding: "10px 13px", background: "rgba(200,71,43,.07)", border: "1px solid rgba(200,71,43,.35)", borderRadius: 4 }}>
+                          <span style={{ fontSize: 14, flexShrink: 0 }}>⚠️</span>
+                          <span style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.5 }}>
+                            {closeInPast ? "Expires date is in the past." : "Expires must be after Opens."} It will be ignored at seal time — falls back to a 30-day window from now instead. Fix it here if you meant a specific date.
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
