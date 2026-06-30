@@ -243,4 +243,12 @@ Result: **2 MetaMask interactions total** (1 sign + 1 deploy tx) for any number 
 
 ---
 
+## Security notes
+
+- No backend signature check on the discovery API routes (`/api/campaigns`, `/api/claims`, `/api/disperse`, `/api/vestings`) — they're a convenience index for the UI, not a source of truth. All actual fund movement requires a real on-chain transaction with cryptographic verification (FHE ACL grants, EIP-712 signatures checked by the contract), so spoofed POST data can't move tokens — at worst it pollutes a wallet's activity list with entries that fail when interacted with.
+- The webhook fetch validates against SSRF (rejects non-http(s) protocols and private/loopback IP ranges) before firing.
+- No CSP header yet. React escapes all dynamic content by default and there's no `dangerouslySetInnerHTML`/`eval` anywhere in the codebase, so there's no known injection vector for CSP to guard — but it's a reasonable hardening step for a follow-up, deferred here to avoid risking a misconfigured allowlist breaking WalletConnect or the Zama relayer connection right before submission.
+
+---
+
 Built for **Zama Developer Program Mainnet Season 3** · Special Bounty × TokenOps · Prize: 2,500 cUSDT
