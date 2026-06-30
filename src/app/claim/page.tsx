@@ -6,7 +6,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import type { Hex, Address } from "viem";
 import { parseEventLogs } from "viem";
 import { createConfidentialAirdropClient } from "@tokenops/sdk/fhe-airdrop";
-import { createConfidentialVestingManagerClient, FeeType } from "@tokenops/sdk/fhe-vesting";
+import { createConfidentialVestingManagerClient, FeeType, isTokenOpsSdkError } from "@tokenops/sdk/fhe-vesting";
 import { useUserDecrypt } from "@zama-fhe/react-sdk";
 import { AppShell } from "@/components/AppShell";
 import { CanvasBackground } from "@/components/CanvasBackground";
@@ -1035,8 +1035,14 @@ export default function ClaimPage() {
                                     setBalanceRefresh(n => n + 1);
                                     toast(`Claimed ${fmt2(claimableDecrypted)} ${v.symbol}`, { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
                                   } catch (e) {
-                                    const msg = humanizeError(e);
-                                    toast(/fail|revert|insufficient/i.test(msg) ? "Claim failed — this vesting may not have been funded. Create a new vesting with the latest code." : msg, { kind: "error" });
+                                    // Surface the SDK's actual typed error message instead of guessing —
+                                    // ClaimLockedError/NotVestingRecipientError/VestingExpiredError etc. already
+                                    // have clear, specific messages baked in.
+                                    if (isTokenOpsSdkError(e)) {
+                                      toast(e.message, { kind: "error" });
+                                    } else {
+                                      toast(humanizeError(e), { kind: "error" });
+                                    }
                                   } finally { setVestingClaiming(null); }
                                 }} disabled={isClaiming} style={{ width: "100%", background: "var(--ink)", color: "var(--page-bg)", padding: "17px", borderRadius: 3, fontSize: 15, fontWeight: 700, cursor: isClaiming ? "default" : "pointer", border: "none", opacity: isClaiming ? 0.6 : 1 }}>
                                   {isClaiming ? "Claiming…" : `Claim ${fmt2(claimableDecrypted)} ${v.symbol} →`}
