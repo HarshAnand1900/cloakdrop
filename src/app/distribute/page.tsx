@@ -699,6 +699,14 @@ export default function DistributePage() {
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--soft)" }}>{vestingDuration}mo total</span>
                     </div>
                   </div>
+                ) : method === "disperse" ? (
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "14px 16px", background: "rgba(111,175,142,.06)", border: "1px solid rgba(111,175,142,.3)", borderRadius: 4, marginBottom: 38 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>⚡</span>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 3 }}>No claim window needed</div>
+                      <div style={{ fontSize: 12.5, color: "var(--mid)", lineHeight: 1.5 }}>Disperse pushes sealed amounts directly into each recipient&apos;s wallet in one transaction — there&apos;s no claim step, so timing settings don&apos;t apply.</div>
+                    </div>
+                  </div>
                 ) : (
                   <div style={{ padding: "16px 18px", background: "var(--card)", border: "1.5px solid var(--line)", borderRadius: 3, marginBottom: 38 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 3, display: "flex", alignItems: "center", gap: 6 }}>
