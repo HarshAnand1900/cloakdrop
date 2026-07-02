@@ -377,6 +377,13 @@ export default function ClaimPage() {
   const [vestingUnlocked, setVestingUnlocked] = useState<Record<string, bigint>>({});
   // Pending ACL handle awaiting decrypt for the vesting currently being revealed.
   const [vestingRevealHandle, setVestingRevealHandle] = useState<{ vestingId: string; handle: Hex; manager: Address } | null>(null);
+  // Raw currently-claimable amount per vestingId — the contract's own vested-minus-
+  // already-settled figure (getClaimableAmount), NOT derived from schedule math.
+  // Must be re-fetched after every claim, otherwise the button keeps showing the
+  // same stale amount and inviting a repeat claim that transfers nothing new.
+  const [vestingClaimableRaw, setVestingClaimableRaw] = useState<Record<string, bigint>>({});
+  const [vestingClaimableLoading, setVestingClaimableLoading] = useState<string | null>(null);
+  const [vestingClaimableHandle, setVestingClaimableHandle] = useState<{ vestingId: string; handle: Hex; manager: Address } | null>(null);
   // "airdrop" or "vesting" — which tab type is currently selected
   const [activeTabKind, setActiveTabKind] = useState<"airdrop" | "vesting">("airdrop");
   const [activeVestingIdx, setActiveVestingIdx] = useState(0);
@@ -478,6 +485,23 @@ export default function ClaimPage() {
     setVestingRevealing(null);
     setVestingRevealHandle(null);
   }, [vestingDecrypt.data, vestingDecrypt.isFetching, vestingRevealHandle]);
+
+  // Real FHE decrypt for the CURRENT claimable amount — the manager's own
+  // vested-minus-already-settled figure. Re-triggered after every claim so the
+  // button always reflects on-chain truth instead of a schedule-only estimate
+  // that never accounts for what's already been withdrawn.
+  const vestingClaimableDecrypt = useUserDecrypt(
+    { handles: vestingClaimableHandle ? [{ handle: vestingClaimableHandle.handle, contractAddress: vestingClaimableHandle.manager }] : [] },
+    { enabled: !!vestingClaimableHandle },
+  );
+  useEffect(() => {
+    if (!vestingClaimableHandle || vestingClaimableDecrypt.isFetching || !vestingClaimableDecrypt.data) return;
+    const { vestingId, handle } = vestingClaimableHandle;
+    const raw = vestingClaimableDecrypt.data[handle] as bigint | undefined;
+    if (raw !== undefined) setVestingClaimableRaw(prev => ({ ...prev, [vestingId]: raw }));
+    setVestingClaimableLoading(null);
+    setVestingClaimableHandle(null);
+  }, [vestingClaimableDecrypt.data, vestingClaimableDecrypt.isFetching, vestingClaimableHandle]);
 
   async function fireWebhook(admin: string, airdrop: string, recipient: string) {
     try {
@@ -829,13 +853,21 @@ export default function ClaimPage() {
                                 // or served by the backend.
                                 const { handle } = await manager.getTotalAllocation({ vestingId: v.vestingId as `0x${string}`, account: address as Address });
                                 setVestingRevealHandle({ vestingId: v.vestingId, handle, manager: v.manager as Address });
+                                // Also fetch the CURRENT claimable amount straight from the contract
+                                // (vested-to-date minus whatever's already been claimed). This is the
+                                // only authoritative source — computing it client-side from the
+                                // schedule alone goes stale the instant a claim succeeds.
+                                setVestingClaimableLoading(v.vestingId);
+                                const claimableRes = await manager.getClaimableAmount({ vestingId: v.vestingId as `0x${string}`, account: address as Address });
+                                setVestingClaimableHandle({ vestingId: v.vestingId, handle: claimableRes.handle, manager: v.manager as Address });
                               } catch (e) {
                                 toast(humanizeError(e), { kind: "error" });
                                 setVestingRevealing(null);
+                                setVestingClaimableLoading(null);
                               }
                             }}
                           >
-                            {isRevealing ? "Check MetaMask — approve reveal tx…" : "Declassify allocation →"}
+                            {isRevealing ? "Check MetaMask — approve reveal (2 txs)…" : "Declassify allocation →"}
                           </button>
                         </>) : (<>
                           {/* Schedule metadata — always shown after reveal */}
@@ -860,7 +892,24 @@ export default function ClaimPage() {
                             const unlockedScheduledAmt = unlockedTotal - unlockedInitialAmt;
                             const totalFmt = fmt2(unlockedTotal);
                             const perReleaseFmt = fmt2(unlockedScheduledAmt / numReleases);
-                            const claimableDecrypted = unlockedInitialAmt + completedReleases * (unlockedScheduledAmt / numReleases);
+                            // Authoritative claimable-now, straight from the contract
+                            // (vested-to-date MINUS whatever's already been claimed) — not
+                            // derived from schedule math, which never knows about past claims.
+                            const claimableRaw = vestingClaimableRaw[v.vestingId];
+                            const claimableFetching = vestingClaimableLoading === v.vestingId;
+                            const claimableDecrypted = claimableRaw !== undefined ? parseFloat(fromRaw(claimableRaw)) : 0;
+                            const claimableKnown = claimableRaw !== undefined;
+                            async function refreshClaimable() {
+                              if (!publicClient || !walletClient || !address) return;
+                              setVestingClaimableLoading(v.vestingId);
+                              try {
+                                const manager = createConfidentialVestingManagerClient({ publicClient, walletClient, address: v.manager as Address });
+                                const { handle } = await manager.getClaimableAmount({ vestingId: v.vestingId as `0x${string}`, account: address as Address });
+                                setVestingClaimableHandle({ vestingId: v.vestingId, handle, manager: v.manager as Address });
+                              } catch {
+                                setVestingClaimableLoading(null);
+                              }
+                            }
                             return (<>
                               <div style={{ background: "var(--overlay)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
                                 {[
@@ -873,16 +922,20 @@ export default function ClaimPage() {
                                   </div>
                                 ))}
                               </div>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 15px", background: claimableDecrypted > 0 ? "rgba(111,175,142,.08)" : "var(--overlay)", border: `1px solid ${claimableDecrypted > 0 ? "rgba(111,175,142,.4)" : "var(--line)"}`, borderRadius: 4, marginBottom: 16 }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 15px", background: claimableKnown && claimableDecrypted > 0 ? "rgba(111,175,142,.08)" : "var(--overlay)", border: `1px solid ${claimableKnown && claimableDecrypted > 0 ? "rgba(111,175,142,.4)" : "var(--line)"}`, borderRadius: 4, marginBottom: 16 }}>
                                 <div>
                                   <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--soft)", marginBottom: 5 }}>Claimable now</div>
-                                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: claimableDecrypted > 0 ? "#6FAF8E" : "var(--soft)", lineHeight: 1 }}>{fmt2(claimableDecrypted)}</div>
+                                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, color: claimableKnown && claimableDecrypted > 0 ? "#6FAF8E" : "var(--soft)", lineHeight: 1 }}>{!claimableKnown ? (claimableFetching ? "…" : "—") : fmt2(claimableDecrypted)}</div>
                                 </div>
                                 <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--soft)" }}>{v.symbol}</span>
                               </div>
-                              {inCliff || expired || claimableDecrypted <= 0 ? (
+                              {!claimableKnown ? (
                                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", textAlign: "center", padding: "4px 0 8px" }}>
-                                  {inCliff ? `First release: ${new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : expired ? "Schedule ended" : "No new releases yet"}
+                                  {claimableFetching ? "Checking on-chain claimable amount…" : "Could not check claimable amount"}
+                                </div>
+                              ) : inCliff || expired || claimableDecrypted <= 0 ? (
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--soft)", textAlign: "center", padding: "4px 0 8px" }}>
+                                  {inCliff ? `First release: ${new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : expired ? "Schedule ended" : "Nothing new to claim right now"}
                                 </div>
                               ) : address?.toLowerCase() !== v.recipient.toLowerCase() ? (
                                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)", textAlign: "center", padding: "12px", border: "1px solid rgba(200,71,43,.4)", borderRadius: 3, background: "rgba(200,71,43,.06)" }}>
@@ -909,6 +962,12 @@ export default function ClaimPage() {
                                     await publicClient.waitForTransactionReceipt({ hash });
                                     setBalanceRefresh(n => n + 1);
                                     toast(`Claimed ${fmt2(claimableDecrypted)} ${v.symbol}`, { kind: "success", href: explorerTx(hash), hrefLabel: "View tx ↗" });
+                                    // Optimistic zero so the button disables instantly instead of showing
+                                    // the same stale claimable amount and inviting a repeat claim — then
+                                    // re-fetch the real on-chain figure to confirm (and catch any dust left
+                                    // by the manager's fee/rounding rules).
+                                    setVestingClaimableRaw(prev => ({ ...prev, [v.vestingId]: 0n }));
+                                    refreshClaimable();
                                   } catch (e) {
                                     // Surface the SDK's actual typed error message instead of guessing —
                                     // ClaimLockedError/NotVestingRecipientError/VestingExpiredError etc. already
