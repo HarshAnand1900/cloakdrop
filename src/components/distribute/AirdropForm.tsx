@@ -142,7 +142,6 @@ export function AirdropForm() {
           handle: enc.handle,
           inputProof: enc.inputProof,
           signature,
-          amount: toRaw(r.amount).toString(),
         });
       }
 

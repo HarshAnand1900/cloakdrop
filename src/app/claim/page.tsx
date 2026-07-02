@@ -13,7 +13,7 @@ import { CanvasBackground } from "@/components/CanvasBackground";
 import { BalanceCard } from "@/components/claim/BalanceCard";
 import { StepRail } from "@/components/StepRail";
 import { useSotto } from "@/context/SottoContext";
-import { fmtToken, shortAddr, timeAgo } from "@/lib/format";
+import { fmtToken, fromRaw, shortAddr, timeAgo } from "@/lib/format";
 import { explorerTx, CUSDT } from "@/lib/constants";
 import { wrapperAbi } from "@/lib/abi";
 import type { PublicClaim } from "@/lib/types";
@@ -373,8 +373,10 @@ export default function ClaimPage() {
   const [vestingClaiming, setVestingClaiming] = useState<string | null>(null);
   const [vestingRevealed, setVestingRevealed] = useState<Set<string>>(new Set());
   const [vestingRevealing, setVestingRevealing] = useState<string | null>(null);
-  // Amounts unlocked per vestingId after wallet-signature ownership proof
-  const [vestingUnlocked, setVestingUnlocked] = useState<Record<string, number>>({});
+  // Raw (6-dec) total allocation per vestingId, decrypted client-side via the Zama relayer.
+  const [vestingUnlocked, setVestingUnlocked] = useState<Record<string, bigint>>({});
+  // Pending ACL handle awaiting decrypt for the vesting currently being revealed.
+  const [vestingRevealHandle, setVestingRevealHandle] = useState<{ vestingId: string; handle: Hex; manager: Address } | null>(null);
   // "airdrop" or "vesting" — which tab type is currently selected
   const [activeTabKind, setActiveTabKind] = useState<"airdrop" | "vesting">("airdrop");
   const [activeVestingIdx, setActiveVestingIdx] = useState(0);
@@ -454,6 +456,28 @@ export default function ClaimPage() {
     })();
     return () => { alive = false; };
   }, [publicClient, claims]);
+
+  // Real FHE decrypt for the vesting reveal — mirrors the airdrop flow: an on-chain
+  // ACL grant (getTotalAllocation) followed by client-side userDecrypt. No plaintext
+  // amount ever touches the server; this hook must stay unconditional (rules of hooks),
+  // so it lives here rather than inside the per-vesting render block below.
+  const vestingDecrypt = useUserDecrypt(
+    { handles: vestingRevealHandle ? [{ handle: vestingRevealHandle.handle, contractAddress: vestingRevealHandle.manager }] : [] },
+    { enabled: !!vestingRevealHandle },
+  );
+  useEffect(() => {
+    if (!vestingRevealHandle || vestingDecrypt.isFetching || !vestingDecrypt.data) return;
+    const { vestingId, handle } = vestingRevealHandle;
+    const raw = vestingDecrypt.data[handle] as bigint | undefined;
+    if (raw === undefined) {
+      toast("Decrypt failed — try again", { kind: "error" });
+    } else {
+      setVestingUnlocked(prev => ({ ...prev, [vestingId]: raw }));
+      setVestingRevealed(prev => new Set([...prev, vestingId]));
+    }
+    setVestingRevealing(null);
+    setVestingRevealHandle(null);
+  }, [vestingDecrypt.data, vestingDecrypt.isFetching, vestingRevealHandle]);
 
   async function fireWebhook(admin: string, airdrop: string, recipient: string) {
     try {
@@ -741,16 +765,14 @@ export default function ClaimPage() {
                       const expired = nowSec > v.endTime;
                       const isClaiming = vestingClaiming === v.vestingId;
                       const isRevealed = vestingRevealed.has(v.vestingId);
-                      const totalDec = parseFloat(v.amount || "0");
+                      const isRevealing = vestingRevealing === v.vestingId;
                       const initialUnlockBps = (v as unknown as { initialUnlockBps?: number }).initialUnlockBps || 0;
-                      const initialUnlockAmt = totalDec * initialUnlockBps / 10000;
-                      const scheduledAmt = totalDec - initialUnlockAmt;
                       const postCliffSecs = Math.max(0, v.endTime - cliffEnd);
                       const numReleases = v.releaseIntervalSecs > 0 ? Math.max(1, Math.floor(postCliffSecs / v.releaseIntervalSecs)) : 1;
-                      const amtPerRelease = scheduledAmt / numReleases;
                       const elapsedPostCliff = Math.max(0, nowSec - cliffEnd);
                       const completedReleases = inCliff ? 0 : Math.min(numReleases, Math.floor(elapsedPostCliff / v.releaseIntervalSecs));
-                      const claimableNow = initialUnlockAmt + completedReleases * amtPerRelease;
+                      // Schedule-only check (no amount needed): has any portion unlocked by time?
+                      const hasClaimableWindow = !inCliff && (completedReleases > 0 || initialUnlockBps > 0);
                       const intervalDays = Math.round(v.releaseIntervalSecs / 86400);
                       const cliffMo = v.cliffSeconds > 0 ? Math.round(v.cliffSeconds / (30 * 86400)) : 0;
                       const durationMo = Math.round((v.endTime - v.startTime) / (30 * 86400));
@@ -795,24 +817,25 @@ export default function ClaimPage() {
                           <button
                             className="s-btn"
                             style={{ width: "100%", justifyContent: "center", fontSize: 15, animation: "pulseRing 2.6s ease-out 1.2s infinite" }}
-                            disabled={vestingRevealing === v.vestingId}
+                            disabled={isRevealing}
                             onClick={async () => {
-                              if (!walletClient || vestingRevealing === v.vestingId) return;
+                              if (!walletClient || !publicClient || isRevealing) return;
                               setVestingRevealing(v.vestingId);
                               try {
-                                // Wallet signs to prove ownership of this address —
-                                // amount comes from the sealed record, only unlocked after signature
-                                await walletClient.signMessage({
-                                  account: walletClient.account!,
-                                  message: `Sotto: reveal vesting schedule\nVesting: ${v.vestingId}\nRecipient: ${address}`,
-                                });
-                                setVestingUnlocked(prev => ({ ...prev, [v.vestingId]: parseFloat(v.amount || "0") }));
-                              } catch { /* user rejected — stay sealed */ }
-                              setVestingRevealing(null);
-                              setVestingRevealed(prev => new Set([...prev, v.vestingId]));
+                                const manager = createConfidentialVestingManagerClient({ publicClient, walletClient, address: v.manager as Address });
+                                // Real FHE reveal: submits a tx that grants an ACL handle to THIS caller
+                                // only, then decrypts client-side via the Zama relayer — same pattern as
+                                // the airdrop flow's getClaimAmount(). No plaintext amount is ever stored
+                                // or served by the backend.
+                                const { handle } = await manager.getTotalAllocation({ vestingId: v.vestingId as `0x${string}`, account: address as Address });
+                                setVestingRevealHandle({ vestingId: v.vestingId, handle, manager: v.manager as Address });
+                              } catch (e) {
+                                toast(humanizeError(e), { kind: "error" });
+                                setVestingRevealing(null);
+                              }
                             }}
                           >
-                            {vestingRevealing === v.vestingId ? "Check MetaMask — sign to reveal…" : "Declassify schedule →"}
+                            {isRevealing ? "Check MetaMask — approve reveal tx…" : "Declassify allocation →"}
                           </button>
                         </>) : (<>
                           {/* Schedule metadata — always shown after reveal */}
@@ -820,7 +843,7 @@ export default function ClaimPage() {
                             {[
                               ["Releases", `${completedReleases} of ${numReleases} complete`],
                               ["Release interval", `Every ${intervalDays}d`],
-                              ["Next release", inCliff ? new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : claimableNow <= 0 ? `in ${Math.ceil((cliffEnd + (completedReleases + 1) * v.releaseIntervalSecs - nowSec) / 86400)}d` : "Now available"],
+                              ["Next release", inCliff ? new Date(cliffEnd * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : !hasClaimableWindow ? `in ${Math.ceil((cliffEnd + (completedReleases + 1) * v.releaseIntervalSecs - nowSec) / 86400)}d` : "Now available"],
                               ["Schedule ends", new Date(v.endTime * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })],
                             ].map(([label, val], i, arr) => (
                               <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : "none" }}>
@@ -832,7 +855,7 @@ export default function ClaimPage() {
 
                           {/* Amounts — only shown after wallet signature ownership proof */}
                           {vestingUnlocked[v.vestingId] !== undefined ? (() => {
-                            const unlockedTotal = vestingUnlocked[v.vestingId];
+                            const unlockedTotal = parseFloat(fromRaw(vestingUnlocked[v.vestingId]));
                             const unlockedInitialAmt = unlockedTotal * initialUnlockBps / 10000;
                             const unlockedScheduledAmt = unlockedTotal - unlockedInitialAmt;
                             const totalFmt = fmt2(unlockedTotal);

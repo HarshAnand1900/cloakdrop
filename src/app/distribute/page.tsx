@@ -314,7 +314,7 @@ export default function DistributePage() {
             message: { recipient: r.recipient as Address, encryptedAmount: enc.handle as `0x${string}` },
           });
           setSealLog(prev => prev.map((row, j) => j === i ? { ...row, op: "sealed ✓", done: true } : row));
-          claims.push({ recipient: r.recipient, handle: enc.handle, inputProof: enc.inputProof, signature: signature as Hex, amount: toRaw(r.amount).toString() });
+          claims.push({ recipient: r.recipient, handle: enc.handle, inputProof: enc.inputProof, signature: signature as Hex });
         }
 
         // Phase 2 — persist
@@ -464,7 +464,6 @@ export default function DistributePage() {
           cliffSeconds: cliffSec,
           releaseIntervalSecs: releaseSec,
           symbol: CUSDT.symbol,
-          amount: rows.find(r => r.recipient.toLowerCase() === ((log.args as { recipient: string }).recipient ?? "").toLowerCase())?.amount ?? "0",
           initialUnlockBps: Math.round(initialUnlockPct * 100),
           createdAt: Date.now(),
         }));

@@ -10,8 +10,6 @@ export interface ClaimRecord {
   inputProof: Hex;
   /** EIP-712 admin signature over Claim(recipient, handle). */
   signature: Hex;
-  /** Plaintext amount in raw 6-dec units — kept server-side only for the admin dashboard, never exposed to other recipients. */
-  amount: string;
 }
 
 /** A deployed airdrop campaign + its claim list. */
@@ -64,8 +62,6 @@ export interface VestingRecord {
   releaseIntervalSecs: number;
   /** Token symbol. */
   symbol: string;
-  /** Plaintext amount in human units — admin dashboard only. */
-  amount: string;
   /** Initial unlock in basis points (e.g. 1000 = 10% claimable immediately). */
   initialUnlockBps: number;
   /** Creation timestamp (ms). */

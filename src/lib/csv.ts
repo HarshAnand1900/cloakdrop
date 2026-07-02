@@ -40,7 +40,9 @@ export function parseRecipients(text: string): ParseResult {
     }
     const [addrPart, amountPart] = parts;
     if (!isAddress(addrPart)) {
-      if (i === 0) return; // header
+      // Only treat line 1 as a silently-skipped header if it actually looks like one —
+      // otherwise a typo'd first recipient address would vanish with no error.
+      if (i === 0 && /address|recipient|wallet/i.test(raw)) return;
       errors.push(`Line ${i + 1}: invalid address "${addrPart}"`);
       return;
     }
